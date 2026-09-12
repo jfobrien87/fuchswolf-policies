@@ -1,4 +1,4 @@
-const CACHE = "forest-pups-p01-1-release-1";
+const CACHE = "forest-pups-p01-1-release-2";
 const FILES = [
   "./",
   "./index.html",

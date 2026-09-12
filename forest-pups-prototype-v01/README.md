@@ -132,3 +132,7 @@ Begin without an explanation, record any adult assistance, and do not demonstrat
 - `manifest.webmanifest`, `sw.js`, `.nojekyll`: static/PWA deployment.
 - `tests/`: optional browser regression harness.
 - `ASSET-NOTES.md`: source provenance and extraction prompt.
+
+## Latest 01.1 layout/audio adjustment
+
+Level 5 uses a full-width ordering strip, two rows of larger planets, and Wolf's protected bottom third. Levels 1–4 retain their existing layout. If sound is silent, hold the parent hotspot and press **Enable / test sound**. This unmutes the game and retries browser audio activation. Also check device volume and output route. Reopen online after replacing the deployed files so the updated service worker can activate.

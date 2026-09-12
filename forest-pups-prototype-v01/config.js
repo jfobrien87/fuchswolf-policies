@@ -103,8 +103,9 @@ export const LEVEL_DEFINITIONS = [
   })),
   {
     id: "solar-system-order",
-    radiusWidth: 0.027,
-    radiusHeight: 0.06,
+    radiusWidth: 0.039,
+    radiusHeight: 0.07,
+    companionRegion: "bottom",
     socketStyle: "neutral",
     path: true,
     portalObject: "sun",
@@ -130,8 +131,11 @@ export const LEVEL_DEFINITIONS = [
         minimumTouchScale: 1.12,
         acquireMultiplier: 1,
         releaseMultiplier: 1,
-        home: [0.43 + (tray % 3) * 0.22, 0.5 + Math.floor(tray / 3) * 0.18],
-        destination: { id, position: [0.34 + index * (0.61 / 8), 0.24] },
+        home:
+          tray < 5
+            ? [0.08 + tray * 0.21, 0.36]
+            : [0.185 + (tray - 5) * 0.21, 0.54],
+        destination: { id, position: [0.065 + index * (0.87 / 8), 0.14] },
       };
     }),
   },

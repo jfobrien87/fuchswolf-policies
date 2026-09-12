@@ -44,3 +44,9 @@ The supplied sheet is drawn using original-resolution crop rectangles, with whit
 ## iPad follow-up
 
 Check real finger pickup near Wolf/planet edges, release wobble, second-finger interruptions, Safari edge gestures, Home Screen audio unlock, and JSON download/copy. Open online after deployment to activate the updated cache, then verify a complete offline launch. Check recognition and ring readability at the actual iPad size. Desktop synthetic tests cannot establish touch latency or physical tablet performance.
+
+## Follow-up: audio recovery and full-width Solar layout
+
+Solar now uses the full width for nine ordered destinations and a shuffled tray in two rows. Its base radius increases from 0.027 to 0.039 of viewport width (about 44% larger where width limits size), with a 0.07 height cap. Wolf has a protected bottom-third region for this level only; his footprint is fitted to this region. Ordinary ghost moves and dragged pieces respect the new boundary. Levels 1–4 retain their left-side companion layout.
+
+Audio resumes from non-running states, including interruptions, and schedules sounds after resume completes. A supported browser audio session is set to playback. Parent tools now include **Enable / test sound**, which also clears mute. First real touches anywhere in the game document attempt audio unlock. Device volume, browser/tab mute and the physical speaker route still need a listening check on the iPad.

@@ -200,9 +200,10 @@ function drawObject(p, x, y, alpha = 1, scale = 1) {
     if (sprite.clip) {
       ctx.beginPath();
       sprite.clip.forEach(([px, py], i) => {
-        const dx = x - sw * fit / 2 + px * fit;
-        const dy = y - sh * fit / 2 + py * fit;
-        if (i === 0) ctx.moveTo(dx, dy); else ctx.lineTo(dx, dy);
+        const dx = x - (sw * fit) / 2 + px * fit;
+        const dy = y - (sh * fit) / 2 + py * fit;
+        if (i === 0) ctx.moveTo(dx, dy);
+        else ctx.lineTo(dx, dy);
       });
       ctx.closePath();
       ctx.clip();
@@ -262,15 +263,27 @@ function releaseRadius(p) {
 function visiblePieceBounds(p, q) {
   return Math.abs(p.x - q.x) <= p.radius && Math.abs(p.y - q.y) <= p.radius;
 }
+function bottomCompanion() {
+  return (
+    LEVEL_DEFINITIONS[state.level]?.companionRegion === "bottom" &&
+    state.phase !== "final"
+  );
+}
 function logicalDragPoint(q, d = drag) {
   const p = d.piece;
   return {
     x: clamp(
       q.x + d.offset.x,
-      W * C.WOLF_ZONE_RIGHT + hitRadius(p) + 6,
+      bottomCompanion()
+        ? p.radius + 8
+        : W * C.WOLF_ZONE_RIGHT + hitRadius(p) + 6,
       W - p.radius - 8,
     ),
-    y: clamp(q.y + d.offset.y - C.FINGER_LIFT, p.radius + 8, H - p.radius - 8),
+    y: clamp(
+      q.y + d.offset.y - C.FINGER_LIFT,
+      p.radius + 8,
+      bottomCompanion() ? (H * 2) / 3 - hitRadius(p) - 6 : H - p.radius - 8,
+    ),
   };
 }
 function lockMeasurements(d) {
@@ -293,6 +306,11 @@ const crops = {
   happy: [1000, 548, 408, 365],
 };
 function wolfDimensions() {
+  if (bottomCompanion())
+    return {
+      w: Math.min(W * 0.19, (H * 0.2) / 1.28),
+      h: Math.min(W * 0.19 * 1.28, H * 0.2),
+    };
   return {
     w: Math.min(W * 0.19, H * 0.29),
     h: Math.min(W * 0.19, H * 0.29) * 1.28,
@@ -333,11 +351,25 @@ let audio = null,
 function unlockAudio() {
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
-    if (audio.state === "suspended") audio.resume().catch(() => {});
+    if (audio.state !== "running") audio.resume().catch(() => {});
+    if (navigator.audioSession) navigator.audioSession.type = "playback";
   } catch {}
 }
 function sound(kind) {
   if (!audio || muted) return;
+  if (audio.state !== "running") {
+    audio
+      .resume()
+      .then(() => {
+        if (audio.state === "running") playSound(kind);
+      })
+      .catch(() => log("audio_resume_failed"));
+    return;
+  }
+  playSound(kind);
+}
+function playSound(kind) {
+  if (muted) return;
   const notes = {
     pickup: [392],
     match: [523, 659],
@@ -382,8 +414,13 @@ function position() {
     const target = state.targets.find((t) => t.id === state.portal.id);
     if (target) Object.assign(state.portal, target);
   }
-  state.wolf.x = clamp(state.wolf.x, 0.13, 0.17);
-  state.wolf.y = clamp(state.wolf.y, 0.3, 0.72);
+  if (bottomCompanion()) {
+    state.wolf.x = clamp(state.wolf.x, 0.12, 0.88);
+    state.wolf.y = 5 / 6;
+  } else {
+    state.wolf.x = clamp(state.wolf.x, 0.13, 0.17);
+    state.wolf.y = clamp(state.wolf.y, 0.3, 0.72);
+  }
 }
 function resize() {
   if (drag) cancelDrag("resize");
@@ -411,7 +448,7 @@ function startLevel(index) {
   state.portal = null;
   state.transition = null;
   state.wolfMove = null;
-  state.wolf = { x: 0.15, y: 0.6 };
+  state.wolf = bottomCompanion() ? { x: 0.5, y: 5 / 6 } : { x: 0.15, y: 0.6 };
   state.reaction = "idle";
   state.levelStart = now();
   state.firstDrag = false;
@@ -461,8 +498,10 @@ function wolfBounds(extended = false) {
     top: state.wolf.y * H - (d.h * m) / 2,
     bottom: state.wolf.y * H + (d.h * m) / 2,
   };
-  if (extended && state.phase === "puzzle")
-    box.right = Math.min(box.right, W * C.WOLF_ZONE_RIGHT);
+  if (extended && state.phase === "puzzle") {
+    if (bottomCompanion()) box.top = Math.max(box.top, (H * 2) / 3);
+    else box.right = Math.min(box.right, W * C.WOLF_ZONE_RIGHT);
+  }
   return box;
 }
 function inBox(q, b) {
@@ -651,6 +690,15 @@ function updateWolf(q) {
     );
   } else {
     const d = wolfDimensions();
+    if (bottomCompanion()) {
+      drag.ghost = {
+        x: clamp(q.x, d.w * 0.7 + 6, W - d.w * 0.7 - 6),
+        y: clamp(q.y, (H * 2) / 3 + d.h * 0.7 + 6, H - d.h * 0.7 - 6),
+      };
+      drag.valid =
+        q.y > (H * 2) / 3 && q.y < H - 12 && q.x > 12 && q.x < W - 12;
+      return;
+    }
     drag.ghost = {
       x: clamp(
         q.x,
@@ -1124,7 +1172,8 @@ function draw(t) {
       box.bottom - box.top,
     );
     ctx.strokeStyle = "#9875a050";
-    ctx.strokeRect(0, 0, W * C.WOLF_ZONE_RIGHT, H);
+    if (bottomCompanion()) ctx.strokeRect(0, (H * 2) / 3, W, H / 3);
+    else ctx.strokeRect(0, 0, W * C.WOLF_ZONE_RIGHT, H);
   }
   for (const target of state.targets) {
     if ($("acquire").checked)
@@ -1290,6 +1339,16 @@ $("copy").onclick = async () => {
     $("status").textContent = "Select and copy the JSON below.";
   }
 };
+$("test-sound").onclick = () => {
+  muted = false;
+  $("mute").checked = false;
+  unlockAudio();
+  sound("friend");
+};
+document.addEventListener("pointerdown", unlockAudio, {
+  capture: true,
+  passive: true,
+});
 $("mute").onchange = (e) => {
   muted = e.target.checked;
 };
@@ -1323,6 +1382,8 @@ window.ForestPups = {
       R,
       hitRadii: state.pieces.map((p) => hitRadius(p)),
       wolfBounds: wolfBounds(true),
+      audioState: audio?.state || "not-started",
+      muted,
     }),
   openDebug,
 };

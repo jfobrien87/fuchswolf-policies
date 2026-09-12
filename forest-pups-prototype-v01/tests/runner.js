@@ -124,11 +124,15 @@ document.querySelector("#run").onclick = async () => {
         for (let i = 0; i < v.state.pieces.length; i++) {
           const p = v.state.pieces[i];
           assert(
-            p.home.x - v.hitRadii[i] > v.wolfBounds.right,
+            v.state.level === 4
+              ? p.home.y + v.hitRadii[i] < v.wolfBounds.top
+              : p.home.x - v.hitRadii[i] > v.wolfBounds.right,
             "Wolf/source separation",
           );
           assert(
-            p.target.x - p.radius > v.wolfBounds.right,
+            v.state.level === 4
+              ? p.target.y + p.radius < v.wolfBounds.top
+              : p.target.x - p.radius > v.wolfBounds.right,
             "Wolf/target separation",
           );
         }
@@ -253,15 +257,15 @@ document.querySelector("#run").onclick = async () => {
             S().events.some((e) => e.type === "wolf_pickup_extended_bounds"),
             "Wolf extended telemetry",
           );
-          pointer("pointermove", wolf.x, s.H * 0.4);
+          pointer("pointermove", wolf.x, s.H * (level === 4 ? 5 / 6 : 0.4));
           assert(
-            S().state.wolf.y === 0.6,
+            Math.abs(S().state.wolf.y - (level === 4 ? 5 / 6 : 0.6)) < 0.001,
             "real Wolf stays at origin during drag",
           );
-          pointer("pointerup", wolf.x, s.H * 0.4);
+          pointer("pointerup", wolf.x, s.H * (level === 4 ? 5 / 6 : 0.4));
           await sleep(500);
           assert(
-            Math.abs(S().state.wolf.y - 0.4) < 0.01,
+            Math.abs(S().state.wolf.y - (level === 4 ? 5 / 6 : 0.4)) < 0.01,
             "valid Wolf destination",
           );
           s = S();
@@ -269,9 +273,17 @@ document.querySelector("#run").onclick = async () => {
           pointer("pointerdown", wolf.x, wolf.y);
           assert(S().drag.kind === "wolf", "wolf pickup");
           pointer("pointermove", s.state.pieces[0].x, s.state.pieces[0].y);
-          assert(S().drag.ghost.x < S().W * 0.28, "ghost kept separate");
+          assert(
+            level === 4
+              ? S().drag.ghost.y > (S().H * 2) / 3
+              : S().drag.ghost.x < S().W * 0.28,
+            "ghost kept separate",
+          );
           pointer("pointerup", s.state.pieces[0].x, s.state.pieces[0].y);
-          assert(S().state.wolf.x < 0.28, "wolf kept separate");
+          assert(
+            level === 4 ? S().state.wolf.y > 2 / 3 : S().state.wolf.x < 0.28,
+            "wolf kept separate",
+          );
           if (level === 4) {
             for (const piece of s.state.pieces) {
               pointer(
