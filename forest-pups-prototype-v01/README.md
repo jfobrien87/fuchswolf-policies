@@ -1,6 +1,8 @@
-# Forest Pups — Preschool Interaction Prototype 01
+# Forest Pups — Preschool Interaction Prototype 01.1
 
-A complete, dependency-free static game for testing drag → match → release with a 2½-year-old. Four deterministic levels lead through Wolf's ghost-destination portal interaction to a Wolf-and-Fox friendship vignette. No accounts, external services, analytics requests, menus in normal play, scores or spoken instructions.
+A complete, dependency-free static game for testing drag → match → release with a 2½-year-old. Four deterministic shape levels and a fifth Solar System ordering level lead through Wolf's ghost-destination portal interaction to a Wolf-and-Fox friendship vignette. No accounts, external services, analytics requests, menus in normal play, scores or spoken instructions.
+
+**Prototype 01.1 includes the supplied illustrated Solar System sheet.** See `UPDATE-01.1.md` for changes and verification.
 
 ## Run locally
 
@@ -58,22 +60,24 @@ History retains the latest 15,000 events. A drag path is sampled at most every 5
 
 | Setting | Default | Meaning |
 | --- | ---: | --- |
-| `TARGET_ACQUIRE_RADIUS` | 1.6 | Visible shape-radius multiplier |
+| `TARGET_ACQUIRE_RADIUS` | 1.9 | Level base-radius multiplier |
 | `TARGET_SNAP_TOLERANCE` | 0.12 | Extra radius added to acquisition, never a release-time collision check |
-| `TARGET_RELEASE_RADIUS` | 2.65 | Larger distance required to abandon a retained candidate |
+| `TARGET_RELEASE_RADIUS` | 3.6 | Larger distance required to abandon a retained candidate |
 | `TARGET_MAGNET_STRENGTH` | 0.12 | Gentle rendering attraction; does not distort input position |
 | `TARGET_SNAP_DURATION` | 230 ms | Successful placement tween |
 | `GHOST_PREVIEW_ACTIVATION_THRESHOLD` | 0 ms | Immediate seated preview; retain zero for this study |
-| `HIT_PADDING` | 20 px | Extra invisible touch area, scaled slightly on large screens |
+| `HIT_PADDING` | 34 px | Extra invisible touch area, scaled slightly on large screens |
 | `PICKUP_SCALE` | 1.08 | Eight-percent lift |
 | `FINGER_LIFT` | 16 px | Vertical drag offset |
 | `RETURN_DURATION` | 320 ms | Gentle return |
-| `WOLF_ACQUIRE_RADIUS` | 1.85 | Portal acquisition multiplier |
-| `WOLF_RELEASE_RADIUS` | 2.9 | Portal cancellation multiplier |
+| `WOLF_ACQUIRE_RADIUS` | 2.2 | Portal acquisition multiplier |
+| `WOLF_RELEASE_RADIUS` | 3.8 | Portal cancellation multiplier |
 
 Acquisition uses the logical piece center, with the original touch offset preserved and a small upward lift. Rendering attraction is separate. A compatible target locks on entry and supplies a correctly seated translucent preview. It remains locked outside the acquisition zone, until the larger cancellation radius is crossed. Entering another compatible target transfers the lock. **Pointer-up consumes the retained state directly; it does not retest final collision geometry.** Pointer cancellation always returns the piece, even if a target was locked.
 
-The production levels intentionally contain only one destination of each shape. The pure targeting test checks compatible-target switching with a separate two-target fixture.
+Each object has one compatible destination. Solar objects use the same base acquisition radius regardless of visual scale; incompatible neighbouring sockets cannot compete for a lock. The pure targeting test checks compatible-target switching with a separate two-target fixture.
+
+Wolf’s pickup envelope is 1.4× his idle footprint, clipped to the protected region during puzzles. Solar objects share a minimum touch footprint, so Mercury remains easy to acquire.
 
 ## Input and Wolf safety
 
@@ -82,7 +86,7 @@ The production levels intentionally contain only one destination of each shape. 
 - The play surface prevents scrolling, selection, context menus and browser image dragging.
 - Wolf has a protected left region. Puzzle pieces, including dragged pieces, remain outside that region. Wolf's ordinary ghost destinations are constrained to it; releases in puzzle space are rejected.
 - The real Wolf remains in place during a ghost drag. A valid release starts a simple translation to the indicated destination.
-- Only after all pieces are locked may Wolf cross puzzle space to enter a portal. Each completed circle becomes a softly glowing circular passage. Portal placement also uses hysteresis.
+- Only after all pieces are locked may Wolf cross puzzle space to enter a portal. The completed circle (or Sun in Level 5) becomes a softly glowing circular passage. Portal placement also uses hysteresis.
 - Hints begin with a brief curious pose after 6.5 seconds, then one gentle piece bob after 15 seconds. Portal hints use a few quiet destination dots, without auto-completing the interaction.
 
 ## Implementation and deliberate compromises
@@ -123,6 +127,7 @@ Begin without an explanation, record any adult assistance, and do not demonstrat
 - `index.html`, `style.css`: full-screen play surface and hidden adult tools.
 - `game.js`: input ownership, game phases, rendering, audio and local telemetry.
 - `config.js`: tolerances, level layouts and pure hysteresis rule.
+- `solar-sprites.js`: supplied sheet URL, native-resolution crop rectangles and ring-safe clipping metadata.
 - `assets/`: supplied Wolf sheet, derived Fox sprite and app icons.
 - `manifest.webmanifest`, `sw.js`, `.nojekyll`: static/PWA deployment.
 - `tests/`: optional browser regression harness.

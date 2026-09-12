@@ -1,13 +1,15 @@
-const CACHE = "forest-pups-p01-v8";
+const CACHE = "forest-pups-p01-1-release-1";
 const FILES = [
   "./",
   "./index.html",
   "./style.css",
   "./config.js",
+  "./solar-sprites.js",
   "./game.js",
   "./manifest.webmanifest",
   "./assets/wolf-poses.png",
   "./assets/fox.png",
+  "./assets/solar-system.png",
   "./assets/icon.svg",
   "./assets/icon.png",
 ];

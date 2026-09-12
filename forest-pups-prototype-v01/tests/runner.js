@@ -120,22 +120,34 @@ document.querySelector("#run").onclick = async () => {
 
       // Every active source hitbox and destination must remain outside Wolf's envelope.
       function geometry() {
-        const v = S(),
-          ww = Math.min(v.W * 0.19, v.H * 0.29),
-          right = v.W * 0.27;
-        for (const p of v.state.pieces) {
-          assert(p.home.x - v.R - 20 > right, "Wolf/source hitbox separation");
-          assert(p.target.x - v.R > right, "Wolf/slot separation");
+        const v = S();
+        for (let i = 0; i < v.state.pieces.length; i++) {
+          const p = v.state.pieces[i];
+          assert(
+            p.home.x - v.hitRadii[i] > v.wolfBounds.right,
+            "Wolf/source separation",
+          );
+          assert(
+            p.target.x - p.radius > v.wolfBounds.right,
+            "Wolf/target separation",
+          );
         }
-        for (let i = 0; i < v.state.pieces.length; i++)
-          for (let j = i + 1; j < v.state.pieces.length; j++) {
-            const a = v.state.pieces[i].home,
-              b = v.state.pieces[j].home;
+        if (v.state.level === 4) {
+          assert(
+            v.state.pieces.map((p) => p.type).join(",") ===
+              "sun,mercury,venus,earth,mars,jupiter,saturn,uranus,neptune",
+            "exact order",
+          );
+          assert(
+            v.hitRadii.every((r) => Math.abs(r - v.hitRadii[0]) < 0.01),
+            "equal minimum touch targets including Mercury",
+          );
+          for (let i = 1; i < v.state.targets.length; i++)
             assert(
-              Math.hypot(a.x - b.x, a.y - b.y) > 2 * (v.R + 20),
-              "source hitbox separation",
+              v.state.targets[i].x > v.state.targets[i - 1].x,
+              "left-to-right order",
             );
-          }
+        }
       }
       geometry();
       // Cancel a retained target rather than accidentally completing it.
@@ -156,6 +168,14 @@ document.querySelector("#run").onclick = async () => {
       p = s.state.pieces[0];
       pointer("pointerdown", p.x + s.R + 12, p.y);
       assert(S().drag, "padded pickup");
+      assert(
+        S().events.at(-1).type === "capture_unavailable" ||
+          S().events.some(
+            (e) =>
+              e.type === "piece_acquired" && e.hitRegion === "extended_bounds",
+          ),
+        "extended telemetry",
+      );
       pointer("pointerdown", p.x, p.y, 2);
       pointer("pointerup", p.x, p.y, 2);
       assert(S().drag.id === 1, "extra finger ownership");
@@ -187,17 +207,32 @@ document.querySelector("#run").onclick = async () => {
       );
       pointer("pointerdown", p.home.x, p.home.y);
       pointer("pointermove", p.target.x, p.target.y + 16);
-      pointer("pointermove", p.target.x - s.R * 1.95, p.target.y + 16);
+      for (let repeat = 0; repeat < 2; repeat++) {
+        pointer("pointermove", p.home.x, p.home.y);
+        assert(!S().drag.lock, "deliberate abandonment");
+        pointer("pointermove", p.target.x, p.target.y + 16);
+        assert(S().drag.lock, "reacquisition");
+      }
+      assert(S().drag.reacquisitions === 2, "same target reacquisition count");
+      pointer("pointermove", p.target.x - s.R * 2.7, p.target.y + 16);
       assert(S().drag.lock, "wobble retains lock");
-      pointer("pointerup", p.target.x - s.R * 2, p.target.y + 20);
+      pointer("pointerup", p.target.x - s.R * 2.8, p.target.y + 20);
       assert(S().state.pieces[0].done, "wobble success");
+      const end = S()
+        .events.filter((e) => e.type === "drag_end")
+        .at(-1);
+      assert(
+        end.maximumDistanceAfterLock > s.R * 2.7,
+        "maximum distance reported",
+      );
+      assert(end.reacquisitions === 2, "exported reacquisitions");
       await until(() => S().state.phase === "portal", "first portal");
-      for (let level = 0; level < 4; level++) {
+      for (let level = 0; level < 5; level++) {
         s = S();
         geometry();
         assert(s.state.level === level, "level sequence");
         if (level > 0) {
-          if (level === 1) {
+          if (level === 1 || level === 4) {
             p = s.state.pieces[0];
             const wrong = s.state.targets[1];
             pointer("pointerdown", p.x, p.y);
@@ -211,7 +246,13 @@ document.querySelector("#run").onclick = async () => {
           }
           s = S();
           const wolf = { x: s.state.wolf.x * s.W, y: s.state.wolf.y * s.H };
-          pointer("pointerdown", wolf.x, wolf.y);
+          const extendedX = s.wolfBounds.left + 4;
+          pointer("pointerdown", extendedX, wolf.y);
+          assert(S().drag?.kind === "wolf", "enlarged Wolf pickup");
+          assert(
+            S().events.some((e) => e.type === "wolf_pickup_extended_bounds"),
+            "Wolf extended telemetry",
+          );
           pointer("pointermove", wolf.x, s.H * 0.4);
           assert(
             S().state.wolf.y === 0.6,
@@ -231,9 +272,24 @@ document.querySelector("#run").onclick = async () => {
           assert(S().drag.ghost.x < S().W * 0.28, "ghost kept separate");
           pointer("pointerup", s.state.pieces[0].x, s.state.pieces[0].y);
           assert(S().state.wolf.x < 0.28, "wolf kept separate");
+          if (level === 4) {
+            for (const piece of s.state.pieces) {
+              pointer(
+                "pointerdown",
+                piece.home.x + piece.radius + 20,
+                piece.home.y,
+              );
+              assert(
+                S().drag?.piece.type === piece.type,
+                "extended planet pickup " + piece.type,
+              );
+              pointer("pointercancel", piece.home.x, piece.home.y);
+              await sleep(350);
+            }
+          }
           for (const piece of s.state.pieces) {
             pointer("pointerdown", piece.home.x, piece.home.y);
-            assert(S().drag?.kind === "piece", "piece pickup");
+            assert(S().drag?.piece.type === piece.type, "correct piece pickup");
             pointer("pointermove", piece.target.x, piece.target.y + 16);
             pointer("pointerup", piece.target.x, piece.target.y + 16);
           }
@@ -246,7 +302,7 @@ document.querySelector("#run").onclick = async () => {
         pointer("pointerup", s.state.portal.x - 5, s.state.portal.y + 7);
         await until(
           () =>
-            level === 3
+            level === 4
               ? S().state.phase === "final"
               : S().state.level === level + 1 && S().state.phase === "puzzle",
           "transition",
@@ -267,14 +323,32 @@ document.querySelector("#run").onclick = async () => {
         "final event",
       );
       assert(
-        s.events.filter((e) => e.type === "portal_interaction").length === 4,
-        "four portals",
+        s.events.filter((e) => e.type === "portal_interaction").length === 5,
+        "five portals",
       );
       assert(
-        s.events.filter((e) => e.type === "correct_match").length === 10,
-        "ten matches",
+        s.events.filter((e) => e.type === "correct_match").length === 19,
+        "nineteen matches",
       );
       win.ForestPups.openDebug();
+      const raw = JSON.parse(doc.querySelector("#raw").value);
+      assert(
+        raw.prototype === "Forest Pups 01.1" &&
+          raw.levelDefinitions.length === 5,
+        "raw telemetry schema",
+      );
+      let exported = null;
+      const originalClick = win.HTMLAnchorElement.prototype.click;
+      win.HTMLAnchorElement.prototype.click = function () {
+        exported = this.href;
+      };
+      doc.querySelector("#export").click();
+      win.HTMLAnchorElement.prototype.click = originalClick;
+      const json = await (await fetch(exported)).json();
+      assert(
+        json.events.some((e) => e.type === "target_reacquired"),
+        "JSON export",
+      );
       doc.querySelector("#restart").click();
       doc.querySelector("#close").click();
       assert(S().state.level === 0, "restart");
@@ -290,7 +364,7 @@ document.querySelector("#run").onclick = async () => {
         `Frame intervals ${size.width}px: median ${Math.round(frameTimes[Math.floor(frameTimes.length * 0.5)])}ms, p95 ${Math.round(frameTimes[Math.floor(frameTimes.length * 0.95)])}ms${loadTimer ? " with 20ms main-thread stalls every 70ms" : ""}`,
       );
       results.push(
-        `PASS ${size.width} × ${size.height}: padded pickup, extra fingers, cancellation, repeated taps, empty/wrong release, acquire/cancel, release wobble, all 10 matches, 4 portals, final reunion, replay, telemetry reset`,
+        `PASS ${size.width} × ${size.height}: padded pickup, extra fingers, cancellation, repeated taps, empty/wrong release, acquire/cancel, release wobble, all 19 matches, 5 portals, final reunion, replay, telemetry reset`,
       );
       result.textContent = results.join("\n");
     }

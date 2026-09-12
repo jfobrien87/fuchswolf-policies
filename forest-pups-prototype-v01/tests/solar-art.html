@@ -1,0 +1,13 @@
+<!doctype html><meta charset="utf-8"><title>Solar sprite crop check</title>
+<style>body{background:#fffdf8;font:14px system-ui}main{display:grid;grid-template-columns:repeat(3,1fr)}canvas{width:100%;max-width:420px;max-height:27vh;object-fit:contain}</style>
+<main></main><script type="module">
+import {SOLAR_SHEET,SOLAR_SPRITES} from '../solar-sprites.js';
+const img=new Image();img.src='../'+SOLAR_SHEET;await img.decode();
+for(const [id,s] of Object.entries(SOLAR_SPRITES)){
+ const wrap=document.createElement('div'),c=document.createElement('canvas');c.width=c.height=440;
+ const ctx=c.getContext('2d'),[sx,sy,sw,sh]=s.crop,fit=410/Math.max(sw,sh),x=(440-sw*fit)/2,y=(430-sh*fit)/2;
+ ctx.save();ctx.globalCompositeOperation='multiply';
+ if(s.clip){ctx.beginPath();s.clip.forEach(([px,py],i)=>{if(i===0)ctx.moveTo(x+px*fit,y+py*fit);else ctx.lineTo(x+px*fit,y+py*fit)});ctx.closePath();ctx.clip()}
+ ctx.drawImage(img,sx,sy,sw,sh,x,y,sw*fit,sh*fit);ctx.restore();wrap.append(c,document.createTextNode(id));document.querySelector('main').append(wrap);
+}
+</script>

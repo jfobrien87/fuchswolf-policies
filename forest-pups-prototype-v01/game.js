@@ -1,10 +1,14 @@
 import {
   CONFIG as C,
-  LEVELS,
-  TYPES,
+  LEVEL_DEFINITIONS,
   distance,
   resolveTarget,
 } from "./config.js";
+import {
+  SOLAR_SHEET,
+  SOLAR_SPRITES,
+  SOLAR_ART_PENDING,
+} from "./solar-sprites.js";
 const canvas = document.querySelector("#play"),
   ctx = canvas.getContext("2d", { alpha: false }),
   dialog = document.querySelector("#debug");
@@ -38,6 +42,7 @@ function flush() {
 function log(type, data = {}) {
   events.push({
     type,
+    prototype: "01.1",
     session,
     at: new Date().toISOString(),
     ms: Math.round(now() - sessionStart),
@@ -181,6 +186,107 @@ function shape(type, x, y, r, slot = false, alpha = 1, scale = 1) {
   );
   ctx.restore();
 }
+function drawObject(p, x, y, alpha = 1, scale = 1) {
+  if (p.definition.renderer === "shape")
+    return shape(p.type, x, y, p.radius, false, alpha, scale);
+  const sprite = SOLAR_SPRITES[p.definition.sprite],
+    r = p.radius * scale;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  if (assets.solarSystem && sprite.crop) {
+    const [sx, sy, sw, sh] = sprite.crop,
+      fit = (2 * r) / Math.max(sw, sh);
+    ctx.globalCompositeOperation = "multiply";
+    if (sprite.clip) {
+      ctx.beginPath();
+      sprite.clip.forEach(([px, py], i) => {
+        const dx = x - sw * fit / 2 + px * fit;
+        const dy = y - sh * fit / 2 + py * fit;
+        if (i === 0) ctx.moveTo(dx, dy); else ctx.lineTo(dx, dy);
+      });
+      ctx.closePath();
+      ctx.clip();
+    }
+    ctx.drawImage(
+      assets.solarSystem,
+      sx,
+      sy,
+      sw,
+      sh,
+      x - (sw * fit) / 2,
+      y - (sh * fit) / 2,
+      sw * fit,
+      sh * fit,
+    );
+  } else {
+    // Explicitly temporary development fallback, replaced by the supplied sheet.
+    ctx.fillStyle = sprite.color;
+    ctx.strokeStyle = "#81745b50";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, r * (sprite.rings ? 0.72 : 1), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (sprite.rings) {
+      ctx.beginPath();
+      ctx.ellipse(x, y, r, r * 0.3, -0.25, 0, Math.PI * 2);
+      ctx.strokeStyle = sprite.color;
+      ctx.lineWidth = p.type === "uranus" ? 2 : 5;
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function objectFor(target) {
+  return state.pieces.find((p) => p.target.id === target.id);
+}
+function hitRadius(p) {
+  return (
+    Math.max(
+      p.radius * p.definition.touchMultiplier,
+      R * p.definition.minimumTouchScale,
+    ) +
+    C.HIT_PADDING * Math.max(1, W / 1200)
+  );
+}
+function acquireRadius(p) {
+  return (
+    R *
+    (C.TARGET_ACQUIRE_RADIUS + C.TARGET_SNAP_TOLERANCE) *
+    p.definition.acquireMultiplier
+  );
+}
+function releaseRadius(p) {
+  return R * C.TARGET_RELEASE_RADIUS * p.definition.releaseMultiplier;
+}
+function visiblePieceBounds(p, q) {
+  return Math.abs(p.x - q.x) <= p.radius && Math.abs(p.y - q.y) <= p.radius;
+}
+function logicalDragPoint(q, d = drag) {
+  const p = d.piece;
+  return {
+    x: clamp(
+      q.x + d.offset.x,
+      W * C.WOLF_ZONE_RIGHT + hitRadius(p) + 6,
+      W - p.radius - 8,
+    ),
+    y: clamp(q.y + d.offset.y - C.FINGER_LIFT, p.radius + 8, H - p.radius - 8),
+  };
+}
+function lockMeasurements(d) {
+  return {
+    maximumDistanceAfterLock: d.maxAfterLock || 0,
+    reacquisitions: d.reacquisitions || 0,
+    targetHistory: structuredClone(d.targetHistory || {}),
+  };
+}
+function recordLockDistance(d, q) {
+  if (!d.lock) return;
+  const value = distance(q, d.lock);
+  d.maxAfterLock = Math.max(d.maxAfterLock || 0, value);
+  const item = d.targetHistory[d.lock.id];
+  item.maximumDistance = Math.max(item.maximumDistance, value);
+}
 const crops = {
   idle: [145, 68, 304, 387],
   curious: [547, 68, 389, 392],
@@ -261,11 +367,10 @@ function sound(kind) {
 }
 function position() {
   state.wolfMove = null;
-  R = Math.min(
-    W * (state.level === 0 ? 0.072 : 0.052),
-    H * (state.level === 0 ? 0.115 : 0.081),
-  );
+  const level = LEVEL_DEFINITIONS[state.level];
+  R = Math.min(W * level.radiusWidth, H * level.radiusHeight);
   for (const p of state.pieces) {
+    p.radius = R * p.definition.visualScale;
     p.home = { x: p.layout[0] * W, y: p.layout[1] * H };
     p.target.x = p.layout[2] * W;
     p.target.y = p.layout[3] * H;
@@ -312,21 +417,24 @@ function startLevel(index) {
   state.firstDrag = false;
   state.firstMatch = false;
   state.targets = [];
-  state.pieces = LEVELS[index].map((layout, i) => {
+  state.definition = LEVEL_DEFINITIONS[index];
+  state.pieces = state.definition.objects.map((definition) => {
     const target = {
-      id: `L${index + 1}-${TYPES[i]}`,
-      type: TYPES[i],
+      id: `L${index + 1}-${definition.destination.id}`,
+      type: definition.id,
       x: 0,
       y: 0,
     };
     state.targets.push(target);
     return {
       id: target.id,
-      type: TYPES[i],
-      layout,
+      type: definition.id,
+      definition,
+      layout: [...definition.home, ...definition.destination.position],
       target,
       x: 0,
       y: 0,
+      radius: 0,
       done: false,
       attempts: 0,
       tween: null,
@@ -342,19 +450,26 @@ function point(e) {
   return { x: e.clientX - b.left, y: e.clientY - b.top };
 }
 function hitPiece(p, q) {
-  return (
-    !p.done &&
-    !p.tween &&
-    distance(p, q) <= R + C.HIT_PADDING * Math.max(1, W / 1200)
-  );
+  return !p.done && !p.tween && distance(p, q) <= hitRadius(p);
+}
+function wolfBounds(extended = false) {
+  const d = wolfDimensions(),
+    m = extended ? C.WOLF_TOUCH_MULTIPLIER : 1;
+  const box = {
+    left: state.wolf.x * W - (d.w * m) / 2,
+    right: state.wolf.x * W + (d.w * m) / 2,
+    top: state.wolf.y * H - (d.h * m) / 2,
+    bottom: state.wolf.y * H + (d.h * m) / 2,
+  };
+  if (extended && state.phase === "puzzle")
+    box.right = Math.min(box.right, W * C.WOLF_ZONE_RIGHT);
+  return box;
+}
+function inBox(q, b) {
+  return q.x >= b.left && q.x <= b.right && q.y >= b.top && q.y <= b.bottom;
 }
 function wolfHit(q) {
-  const d = wolfDimensions(),
-    x = state.wolf.x * W,
-    y = state.wolf.y * H;
-  return (
-    Math.abs(q.x - x) <= d.w * 0.5 + 12 && Math.abs(q.y - y) <= d.h * 0.5 + 12
-  );
+  return inBox(q, wolfBounds(true));
 }
 function activity() {
   lastActivity = now();
@@ -390,16 +505,27 @@ function down(e) {
   const q = point(e);
   activity();
   if (state.phase === "final") {
-    if (wolfHit(q) || distance(q, { x: W * 0.64, y: H * 0.55 }) < H * 0.2) {
-      react("happy", 850);
-      state.friendBounceAt = now();
+    const character = wolfHit(q)
+      ? "wolf"
+      : distance(q, { x: W * 0.64, y: H * 0.55 }) < H * 0.2
+        ? "fox"
+        : null;
+    if (character) {
+      state.characterReactions ||= {};
+      state.characterReactions[character] = now();
       sound("friend");
-      log("friend_touched");
+      log("friend_touched", { character });
     }
     return;
   }
   if (state.phase === "puzzle") {
-    const p = state.pieces.find((p) => hitPiece(p, q));
+    const p = state.pieces
+      .filter((p) => hitPiece(p, q))
+      .sort(
+        (a, b) =>
+          Number(visiblePieceBounds(b, q)) - Number(visiblePieceBounds(a, q)) ||
+          distance(a, q) - distance(b, q),
+      )[0];
     if (p) {
       p.attempts++;
       log("piece_touched", {
@@ -407,6 +533,9 @@ function down(e) {
         x: q.x,
         y: q.y,
         attempt: p.attempts,
+        hitRegion: visiblePieceBounds(p, q)
+          ? "visible_bounds"
+          : "extended_bounds",
       });
       drag = {
         kind: "piece",
@@ -421,10 +550,18 @@ function down(e) {
         sample: now(),
         lock: null,
         everLocked: false,
+        maxAfterLock: 0,
+        reacquisitions: 0,
+        targetHistory: {},
         afterAcquire: 0,
         moved: false,
       };
-      log("piece_acquired", { shape: p.type });
+      log("piece_acquired", {
+        shape: p.type,
+        hitRegion: visiblePieceBounds(p, q)
+          ? "visible_bounds"
+          : "extended_bounds",
+      });
       react("curious", 1400);
       sound("pickup");
       capture(e);
@@ -432,7 +569,11 @@ function down(e) {
     }
   }
   if (wolfHit(q)) {
-    log("wolf_touched");
+    const hitRegion = inBox(q, wolfBounds())
+      ? "visible_bounds"
+      : "extended_bounds";
+    log("wolf_touched", { hitRegion });
+    if (hitRegion === "extended_bounds") log("wolf_pickup_extended_bounds");
     drag = {
       kind: "wolf",
       id: e.pointerId,
@@ -442,23 +583,41 @@ function down(e) {
       ghost: q,
       lock: null,
       everLocked: false,
+      maxAfterLock: 0,
+      reacquisitions: 0,
+      targetHistory: {},
       afterAcquire: 0,
       distance: 0,
       path: [],
       sample: now(),
       moved: false,
     };
-    log("wolf_ghost_drag_started");
+    log("wolf_ghost_drag_started", { hitRegion });
     capture(e);
     sound("pickup");
     updateWolf(q);
   }
 }
 function updateLock(q, candidates, acq, rel) {
+  recordLockDistance(drag, q);
   const old = drag.lock,
     next = resolveTarget(q, candidates, old, acq, rel);
   if (next?.id !== old?.id) {
     if (next) {
+      const history = (drag.targetHistory[next.id] ||= {
+        acquisitions: 0,
+        reacquisitions: 0,
+        maximumDistance: 0,
+      });
+      if (history.acquisitions) {
+        history.reacquisitions++;
+        drag.reacquisitions++;
+        log("target_reacquired", {
+          target: next.id,
+          count: history.reacquisitions,
+        });
+      }
+      history.acquisitions++;
       log(old ? "target_switched" : "target_acquired", {
         shape: drag.piece?.type || "wolf",
         target: next.id,
@@ -475,8 +634,10 @@ function updateLock(q, candidates, acq, rel) {
         target: old.id,
         distanceFromTarget: distance(q, old),
         distanceAfterAcquisition: drag.afterAcquire,
+        ...lockMeasurements(drag),
       });
     drag.lock = next;
+    recordLockDistance(drag, q);
   }
 }
 function updateWolf(q) {
@@ -491,10 +652,15 @@ function updateWolf(q) {
   } else {
     const d = wolfDimensions();
     drag.ghost = {
-      x: clamp(q.x, d.w / 2 + 20, W * 0.27 - d.w / 2 - 20),
+      x: clamp(
+        q.x,
+        (d.w * C.WOLF_TOUCH_MULTIPLIER) / 2 + 6,
+        W * C.WOLF_ZONE_RIGHT - (d.w * C.WOLF_TOUCH_MULTIPLIER) / 2 - 6,
+      ),
       y: clamp(q.y, d.h / 2 + 25, H - d.h / 2 - 25),
     };
-    drag.valid = q.x < W * 0.28 && q.x > 12 && q.y > 12 && q.y < H - 12;
+    drag.valid =
+      q.x < W * C.WOLF_ZONE_RIGHT && q.x > 12 && q.y > 12 && q.y < H - 12;
   }
 }
 function moveOne(e) {
@@ -524,16 +690,15 @@ function moveOne(e) {
   }
   if (drag.kind === "piece") {
     const p = drag.piece;
-    p.x = clamp(q.x + drag.offset.x, W * 0.29 + R, W - R - 8);
-    p.y = clamp(q.y + drag.offset.y - C.FINGER_LIFT, R + 8, H - R - 8);
+    Object.assign(p, logicalDragPoint(q));
     updateLock(
       p,
       state.targets.filter(
         (t) =>
           t.type === p.type && !state.pieces.find((s) => s.target === t)?.done,
       ),
-      R * (C.TARGET_ACQUIRE_RADIUS + C.TARGET_SNAP_TOLERANCE),
-      R * C.TARGET_RELEASE_RADIUS,
+      acquireRadius(p),
+      releaseRadius(p),
     );
   } else updateWolf(q);
 }
@@ -559,6 +724,7 @@ function up(e) {
   e.preventDefault();
   const d = drag,
     q = point(e);
+  recordLockDistance(d, d.kind === "piece" ? logicalDragPoint(q, d) : q);
   log("release_location", {
     kind: d.kind,
     shape: d.piece?.type,
@@ -574,13 +740,19 @@ function up(e) {
     distance: d.distance,
     path: d.path,
     distanceAfterAcquisition: d.afterAcquire,
+    ...lockMeasurements(d),
   });
   if (d.lock)
     log("pointer_up_while_target_locked", {
       target: d.lock.id,
       distanceAfterAcquisition: d.afterAcquire,
+      ...lockMeasurements(d),
     });
-  else if (d.everLocked) log("pointer_up_after_target_lost", { kind: d.kind });
+  else if (d.everLocked)
+    log("pointer_up_after_target_lost", {
+      kind: d.kind,
+      ...lockMeasurements(d),
+    });
   drag = null;
   releaseCapture(e.pointerId);
   if (d.kind === "piece") {
@@ -612,8 +784,7 @@ function up(e) {
       }
     } else {
       const wrong = state.targets.find(
-        (t) =>
-          t.type !== p.type && distance(p, t) < R * C.TARGET_ACQUIRE_RADIUS,
+        (t) => t.type !== p.type && distance(p, t) < acquireRadius(p),
       );
       log(wrong ? "incorrect_target_attempt" : "empty_space_release", {
         shape: p.type,
@@ -662,6 +833,7 @@ function cancelDrag(reason) {
     distance: d.distance,
     path: d.path,
     lockedTarget: d.lock?.id,
+    ...lockMeasurements(d),
   });
   if (d.kind === "piece")
     tween(d.piece, d.piece.home.x, d.piece.home.y, C.RETURN_DURATION);
@@ -705,10 +877,11 @@ function ring(x, y, r, color, dash = []) {
 }
 function drawPortal(t) {
   const p = state.portal;
-  shape(p.type, p.x, p.y, R, false, 0.8);
+  const object = objectFor(p);
+  drawObject(object, p.x, p.y, 0.8);
   ctx.save();
   ctx.translate(p.x, p.y);
-  shapePath(ctx, p.type, R * 0.9);
+  shapePath(ctx, object.definition.shape || "circle", R * 0.9);
   const g = ctx.createRadialGradient(0, 0, 3, 0, 0, R);
   g.addColorStop(0, "#fffdf8");
   g.addColorStop(0.7, "#eef4d9");
@@ -746,33 +919,55 @@ function draw(t) {
   }
   if (state.phase === "celebrate" && t - state.completeAt > 1100) {
     state.phase = "portal";
-    state.portal = { ...state.targets[0] };
+    state.portal = {
+      ...state.targets.find((t) => t.type === state.definition.portalObject),
+    };
     lastActivity = t;
     hintStage = 0;
     log("portal_ready");
   }
   if (state.phase === "final") {
-    const bounceStart = state.friendBounceAt || state.finalAt;
+    const bounceStart = state.characterReactions?.wolf || state.finalAt;
     const b =
-      t - bounceStart < 1600
-        ? Math.abs(Math.sin((t - bounceStart) / 170)) * 10
+      t - bounceStart < 900
+        ? Math.sin(clamp((t - bounceStart) / 900, 0, 1) * Math.PI) * 16
         : 0;
-    wolf(W * 0.38, H * 0.55, { pose: "idle", bounce: b });
+    wolf(W * 0.38, H * 0.55, { pose: "idle", bounce: b, tilt: b * 0.005 });
     ctx.save();
     ctx.globalAlpha = clamp((t - state.finalAt) / 700, 0, 1);
     const s = Math.min(H * 0.4, W * 0.26);
-    ctx.drawImage(assets.fox, W * 0.64 - s / 2, H * 0.55 - s / 2 - b, s, s);
+    const foxStart = state.characterReactions?.fox || state.finalAt;
+    const foxBounce =
+      t - foxStart < 900
+        ? Math.sin(Math.min(1, (t - foxStart) / 900) * Math.PI) * 18
+        : 0;
+    ctx.translate(W * 0.64, H * 0.55 - foxBounce);
+    ctx.rotate(-foxBounce * 0.005);
+    ctx.drawImage(assets.fox, -s / 2, -s / 2, s, s);
     ctx.restore();
     state.wolf = { x: 0.38, y: 0.55 };
   } else {
-    for (const target of state.targets)
-      shape(target.type, target.x, target.y, R, true);
+    if (state.definition?.path) {
+      ctx.save();
+      ctx.strokeStyle = "#b8b5a34a";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(state.targets[0].x, state.targets[0].y);
+      ctx.lineTo(state.targets.at(-1).x, state.targets.at(-1).y);
+      ctx.stroke();
+      ctx.restore();
+    }
+    for (const target of state.targets) {
+      if (state.definition.socketStyle === "neutral")
+        ring(target.x, target.y, R * 0.72, "#b6b5a180");
+      else shape(target.type, target.x, target.y, R, true);
+    }
     if (
       drag?.lock &&
       drag.kind === "piece" &&
       t - drag.lockAt >= C.GHOST_PREVIEW_ACTIVATION_THRESHOLD
     ) {
-      shape(drag.piece.type, drag.lock.x, drag.lock.y, R, false, 0.38);
+      drawObject(drag.piece, drag.lock.x, drag.lock.y, 0.38);
       ring(drag.lock.x, drag.lock.y, R * 1.18, "#8eab6980");
     }
     for (const p of state.pieces) {
@@ -807,7 +1002,9 @@ function draw(t) {
         if (elapsed % 11000 < 650)
           y -= Math.sin(((elapsed % 11000) / 650) * Math.PI) * 5;
       }
-      shape(p.type, x, y, R, false, 1, scale);
+      if (state.definition.path && state.phase === "celebrate")
+        scale *= 1 + 0.035 * Math.sin((t - state.completeAt) / 160);
+      drawObject(p, x, y, 1, scale);
     }
     if (state.portal) drawPortal(t);
     let wx = state.wolf.x * W,
@@ -864,10 +1061,10 @@ function draw(t) {
       ctx.fillStyle = `rgba(255,253,248,${a})`;
       ctx.fillRect(0, 0, W, H);
       if (a === 1) {
-        if (state.level === 3) {
+        if (state.level === LEVEL_DEFINITIONS.length - 1) {
           state.phase = "final";
           state.finalAt = t;
-          state.friendBounceAt = 0;
+          state.characterReactions = {};
           state.portal = null;
           state.wolf = { x: 0.38, y: 0.55 };
           log("final_completion");
@@ -917,24 +1114,24 @@ function draw(t) {
   if ($("hitboxes").checked) {
     state.pieces
       .filter((p) => !p.done)
-      .forEach((p) => ring(p.x, p.y, R + C.HIT_PADDING, "#4789bf", [4, 4]));
-    const d = wolfDimensions();
+      .forEach((p) => ring(p.x, p.y, hitRadius(p), "#4789bf", [4, 4]));
+    const box = wolfBounds(true);
     ctx.strokeStyle = "#9875a0";
     ctx.strokeRect(
-      state.wolf.x * W - d.w / 2 - 12,
-      state.wolf.y * H - d.h / 2 - 12,
-      d.w + 24,
-      d.h + 24,
+      box.left,
+      box.top,
+      box.right - box.left,
+      box.bottom - box.top,
     );
     ctx.strokeStyle = "#9875a050";
-    ctx.strokeRect(0, 0, W * 0.28, H);
+    ctx.strokeRect(0, 0, W * C.WOLF_ZONE_RIGHT, H);
   }
   for (const target of state.targets) {
     if ($("acquire").checked)
       ring(
         target.x,
         target.y,
-        R * (C.TARGET_ACQUIRE_RADIUS + C.TARGET_SNAP_TOLERANCE),
+        acquireRadius(objectFor(target)),
         "#559b7b70",
         [5, 5],
       );
@@ -942,7 +1139,7 @@ function draw(t) {
       ring(
         target.x,
         target.y,
-        R * C.TARGET_RELEASE_RADIUS,
+        releaseRadius(objectFor(target)),
         "#c1a15380",
         [8, 6],
       );
@@ -953,7 +1150,9 @@ function draw(t) {
 }
 function snapshot() {
   return {
-    prototype: "Forest Pups 01",
+    prototype: "Forest Pups 01.1",
+    artStatus: SOLAR_ART_PENDING ? "solar-sheet-pending" : "complete",
+    levelDefinitions: LEVEL_DEFINITIONS,
     exportedAt: new Date().toISOString(),
     configuration: C,
     viewport: { width: W, height: H, dpr },
@@ -968,7 +1167,7 @@ function updateDebug() {
       {},
     );
   $("status").textContent =
-    `Level ${state.level + 1} · ${state.phase} · ${events.length} saved events · ${storageOK ? "local storage available" : "storage unavailable — export before closing"} · ${navigator.serviceWorker?.controller ? "offline cache active" : "offline cache not yet controlling this page"}`;
+    `Prototype 01.1${SOLAR_ART_PENDING ? " · Solar System development art (sheet pending)" : ""} · Level ${state.level + 1} · ${state.phase} · ${events.length} saved events · ${storageOK ? "local storage available" : "storage unavailable — export before closing"} · ${navigator.serviceWorker?.controller ? "offline cache active" : "offline cache not yet controlling this page"}`;
   $("metrics").textContent = JSON.stringify(
     {
       matches: counts.correct_match || 0,
@@ -976,6 +1175,11 @@ function updateDebug() {
       emptyReleases: counts.empty_space_release || 0,
       locks: counts.target_acquired || 0,
       lostLocks: counts.target_cancelled || 0,
+      reacquisitions: counts.target_reacquired || 0,
+      extendedWolfPickups: counts.wolf_pickup_extended_bounds || 0,
+      extendedPiecePickups: current.filter(
+        (e) => e.type === "piece_acquired" && e.hitRegion === "extended_bounds",
+      ).length,
       retainedReleases: counts.pointer_up_while_target_locked || 0,
       cancellations: counts.pointer_cancel || 0,
       timings: current
@@ -1032,7 +1236,8 @@ function resume() {
   state.levelStart += delta;
   state.completeAt += delta;
   state.finalAt += delta;
-  if (state.friendBounceAt) state.friendBounceAt += delta;
+  for (const id of Object.keys(state.characterReactions || {}))
+    state.characterReactions[id] += delta;
   state.fadeAt += delta;
   if (state.transition) state.transition.start += delta;
   if (state.wolfMove) state.wolfMove.start += delta;
@@ -1094,6 +1299,7 @@ requestAnimationFrame(draw);
 Promise.all([
   loadImage("wolf", "assets/wolf-poses.png"),
   loadImage("fox", "assets/fox.png"),
+  ...(SOLAR_SHEET ? [loadImage("solarSystem", SOLAR_SHEET)] : []),
 ])
   .then(() => startLevel(0))
   .catch(() => {
@@ -1106,6 +1312,17 @@ if ("serviceWorker" in navigator && location.protocol !== "file:")
     .catch(() => log("offline_cache_unavailable"));
 // Read-only inspection for automated regression tests and adult diagnostics.
 window.ForestPups = {
-  snapshot: () => structuredClone({ state, drag, config: C, events, W, H, R }),
+  snapshot: () =>
+    structuredClone({
+      state,
+      drag,
+      config: C,
+      events,
+      W,
+      H,
+      R,
+      hitRadii: state.pieces.map((p) => hitRadius(p)),
+      wolfBounds: wolfBounds(true),
+    }),
   openDebug,
 };

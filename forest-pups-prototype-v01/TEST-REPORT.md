@@ -64,3 +64,23 @@ These are approximate callback intervals on a high-refresh desktop. They are **n
 ## Suggested device smoke test before involving the child
 
 Open the hosted HTTPS version and try one drag with substantial release wobble. Cancel a drag by switching away and back. Try two fingers. Complete one portal. Check the four-second parent hold and JSON export. Open the Home Screen version online, then relaunch in airplane mode. Use `tests/` for repeatable application-level checks if helpful.
+
+## Prototype 01.1 — 12 September 2026
+
+Executed the updated browser regression suite at 1180×820, 900×600 and 768×1024. All passed. Each run completed all 19 matches and five portal transitions through the real game event handlers. Checks include enlarged pickup regions (all nine Solar bodies), Wolf extended pickup, safe Wolf/source geometry, second-finger ownership, cancellation, empty/incorrect releases, deliberate lock abandonment, two same-target reacquisitions, and successful release at 2.8 base radii after retained acquisition. The shared pure targeting fixture also checks compatible-target switching.
+
+Parent hold, restart/reset, raw JSON schema and JSON export Blob content passed. The export test suppresses the final file-save action and reads its Blob; it does not validate an iPad save/share dialog. New maximum-distance and reacquisition telemetry assertions passed.
+
+Observed desktop frame intervals: 1180 median 8ms/p95 9ms; 900 median 8ms/p95 16ms with deliberate 20ms main-thread stalls every 70ms; portrait median 8ms/p95 9ms. These describe this desktop test, not tablet performance or input latency.
+
+Visually inspected the Level 5 development layout: nine neutral sockets ordered left-to-right, a separate shuffled three-by-three tray, and Wolf clear of the activity. Final source artwork remains missing, so no sprite crop/ring fidelity or final art comprehension validation is claimed.
+
+The separate reunion harness passed portal/travel resize through all five levels and independent rapid repeat Fox/Wolf reaction checks. A real browser drag outside the original shape hit area produced a successful match with `captured: true` in release telemetry. No physical iPad test was performed for 01.1.
+
+## 01.1 supplied-art release verification
+
+Integrated the supplied 1254×1254 Solar System sheet without modifying its pixels. Visually checked a nine-sprite crop proof, including complete Saturn/Uranus rings and exclusion of neighbouring artwork. Re-ran the full regression with the supplied assets: all tests passed at 1180×820, 900×600 with synthetic processing stalls, and 768×1024. All 19 matches, five portals, retained-lock wobble, safe geometry, telemetry export/reset and final interaction passed again. Recorded median/p95 desktop frame intervals: 8/9ms, 8/17ms with stalls, 8/9ms respectively.
+
+The sheet is included in the versioned service-worker precache list. Offline reopening and physical touch/audio remain manual iPad release checks; this artwork update does not claim a new physical-device test.
+
+Final in-game visual check on 13 September: all nine supplied illustrations render in the shuffled tray, Saturn and Uranus retain their rings, neutral destinations remain separate, and Wolf stays clear of the activity.
