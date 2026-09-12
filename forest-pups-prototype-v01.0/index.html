@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"
+    />
+    <meta name="theme-color" content="#fffdf8" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta
+      name="description"
+      content="Forest Pups preschool interaction prototype"
+    />
+    <title>Forest Pups</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/icon.png" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main id="game" aria-label="Forest Pups shape matching game">
+      <canvas
+        id="play"
+        aria-label="Drag a shape into its matching space. Wolf Pup waits beside you."
+      ></canvas>
+    </main>
+    <button
+      id="parent"
+      aria-label="Hold four seconds for parent tools"
+    ></button>
+    <dialog id="debug">
+      <h1>Forest Pups · Parent tools</h1>
+      <p id="status"></p>
+      <div class="controls">
+        <button id="close">Back to play</button
+        ><button id="export">Export JSON</button
+        ><button id="copy">Copy JSON</button
+        ><button id="restart">Restart Level 1</button
+        ><button id="reset">Reset telemetry</button>
+      </div>
+      <fieldset>
+        <legend>Observation overlays</legend>
+        <label><input type="checkbox" id="hitboxes" /> Touch areas</label
+        ><label><input type="checkbox" id="acquire" /> Acquisition zones</label
+        ><label><input type="checkbox" id="release" /> Cancellation zones</label
+        ><label><input type="checkbox" id="locked" /> Locked destination</label
+        ><label><input type="checkbox" id="mute" /> Mute sound</label>
+      </fieldset>
+      <pre id="metrics"></pre>
+      <details>
+        <summary>Raw event history / copy fallback</summary>
+        <textarea id="raw" readonly aria-label="Telemetry JSON"></textarea>
+      </details>
+    </dialog>
+    <script type="module" src="game.js"></script>
+  </body>
+</html>

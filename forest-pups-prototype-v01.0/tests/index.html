@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Forest Pups regression tests</title>
+    <style>
+      body {
+        font: 14px system-ui;
+        background: #fffdf8;
+      }
+      pre {
+        white-space: pre-wrap;
+      }
+      iframe {
+        border: 0;
+        display: block;
+      }
+      button {
+        padding: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Forest Pups input regression</h1>
+    <p>
+      Tests use a separate telemetry storage key. Synthetic pointer tests
+      supplement real device testing.
+    </p>
+    <button id="run">Run regression</button>
+    <pre id="result">Ready</pre>
+    <div id="frames"></div>
+    <script type="module" src="runner.js"></script>
+  </body>
+</html>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Wolf sprite crop check</title>
+    <style>
+      body {
+        background: #fffdf8;
+        font: 14px system-ui;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <p>Calm · Curious · Playful — source crop verification</p>
+    <canvas width="1000" height="500"></canvas>
+    <script>
+      const im = new Image();
+      im.onload = () => {
+        const c = document.querySelector("canvas").getContext("2d");
+        c.globalCompositeOperation = "multiply";
+        [
+          [145, 68, 304, 387],
+          [547, 68, 389, 392],
+          [1000, 548, 408, 365],
+        ].forEach((crop, i) => {
+          const w = 260,
+            h = (w * crop[3]) / crop[2];
+          c.drawImage(im, ...crop, 30 + i * 320, 440 - h, w, h);
+        });
+      };
+      im.src = "../assets/wolf-poses.png";
+    </script>
+  </body>
+</html>

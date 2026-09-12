@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Forest Pups reunion visual check</title>
+    <style>
+      body {
+        margin: 0;
+        font: 13px system-ui;
+      }
+      iframe {
+        border: 0;
+        width: 100%;
+        height: 90vh;
+      }
+      button {
+        padding: 12px;
+      }
+      pre {
+        display: inline;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe src="../index.html?test=1"></iframe
+    ><button id="run">Play through to reunion</button>
+    <pre id="status">Ready</pre>
+    <script>
+      const f = document.querySelector("iframe"),
+        sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      document.querySelector("#run").onclick = async () => {
+        const w = f.contentWindow,
+          c = w.document.querySelector("canvas"),
+          S = () => w.ForestPups.snapshot();
+        w.ForestPups.openDebug();
+        w.document.querySelector("#reset").click();
+        w.document.querySelector("#close").click();
+        const pointer = (type, x, y) => {
+          const b = c.getBoundingClientRect();
+          c.dispatchEvent(
+            new w.PointerEvent(type, {
+              pointerId: 1,
+              pointerType: "touch",
+              clientX: x + b.left,
+              clientY: y + b.top,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+        };
+        for (let level = 0; level < 4; level++) {
+          document.querySelector("#status").textContent =
+            "Checking level " + (level + 1);
+          const s = S();
+          for (const p of s.state.pieces) {
+            pointer("pointerdown", p.x, p.y);
+            pointer("pointermove", p.target.x, p.target.y + 16);
+            pointer("pointerup", p.target.x, p.target.y + 16);
+            await sleep(300);
+          }
+          while (S().state.phase !== "portal") await sleep(50);
+          f.style.width = "calc(100% - 40px)";
+          await sleep(150);
+          if (S().state.portal.x !== S().state.targets[0].x) {
+            document.querySelector("#status").textContent =
+              "FAIL portal resize";
+            return;
+          }
+          const v = S();
+          pointer("pointerdown", v.state.wolf.x * v.W, v.state.wolf.y * v.H);
+          pointer("pointermove", v.state.portal.x, v.state.portal.y);
+          pointer("pointerup", v.state.portal.x, v.state.portal.y);
+          await sleep(300);
+          f.style.width = "100%";
+          await sleep(100);
+          if (S().state.transition.to.x !== S().state.portal.x) {
+            document.querySelector("#status").textContent =
+              "FAIL travel resize";
+            return;
+          }
+          await sleep(2700);
+        }
+        document.querySelector("#status").textContent =
+          "Final reunion — portal and travel resize checks passed — tap either pup";
+      };
+    </script>
+  </body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Forest Pups manual input check</title>
+    <style>
+      body {
+        margin: 0;
+        font: 13px system-ui;
+      }
+      iframe {
+        border: 0;
+        width: 100%;
+        height: 82vh;
+        display: block;
+      }
+      pre {
+        margin: 8px;
+        white-space: pre-wrap;
+      }
+      button {
+        margin: 8px;
+        padding: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe src="../index.html?test=1"></iframe
+    ><button id="reset">Reset test game</button>
+    <pre id="state">Loading</pre>
+    <script>
+      const frame = document.querySelector("iframe");
+      document.querySelector("#reset").onclick = () => {
+        const w = frame.contentWindow;
+        w.ForestPups.openDebug();
+        w.document.querySelector("#reset").click();
+        w.document.querySelector("#close").click();
+      };
+      setInterval(() => {
+        const w = frame.contentWindow;
+        if (!w.ForestPups) return;
+        const s = w.ForestPups.snapshot();
+        document.querySelector("#state").textContent = JSON.stringify(
+          {
+            level: s.state.level + 1,
+            phase: s.state.phase,
+            drag: s.drag
+              ? {
+                  kind: s.drag.kind,
+                  locked: s.drag.lock?.id,
+                  captured: w.document
+                    .querySelector("canvas")
+                    .hasPointerCapture(s.drag.id),
+                }
+              : null,
+            placed: s.state.pieces.filter((p) => p.done).length,
+            lastRelease: s.events
+              .filter((e) => e.type === "release_location")
+              .at(-1),
+            lastEvents: s.events.slice(-5).map((e) => e.type),
+          },
+          null,
+          1,
+        );
+      }, 200);
+    </script>
+  </body>
+</html>
