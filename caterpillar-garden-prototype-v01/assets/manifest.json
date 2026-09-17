@@ -1,0 +1,62 @@
+{
+  "shapes": {
+    "circle": {
+      "red": "assets/shapes/circle-red.png",
+      "blue": "assets/shapes/circle-blue.png",
+      "yellow": "assets/shapes/circle-yellow.png",
+      "green": "assets/shapes/circle-green.png",
+      "purple": "assets/shapes/circle-purple.png",
+      "orange": "assets/shapes/circle-orange.png",
+      "socket": "assets/shapes/circle-socket.png"
+    },
+    "square": {
+      "red": "assets/shapes/square-red.png",
+      "blue": "assets/shapes/square-blue.png",
+      "yellow": "assets/shapes/square-yellow.png",
+      "green": "assets/shapes/square-green.png",
+      "purple": "assets/shapes/square-purple.png",
+      "orange": "assets/shapes/square-orange.png",
+      "socket": "assets/shapes/square-socket.png"
+    },
+    "triangle": {
+      "red": "assets/shapes/triangle-red.png",
+      "blue": "assets/shapes/triangle-blue.png",
+      "yellow": "assets/shapes/triangle-yellow.png",
+      "green": "assets/shapes/triangle-green.png",
+      "purple": "assets/shapes/triangle-purple.png",
+      "orange": "assets/shapes/triangle-orange.png",
+      "socket": "assets/shapes/triangle-socket.png"
+    },
+    "rectangle": {
+      "red": "assets/shapes/rectangle-red.png",
+      "blue": "assets/shapes/rectangle-blue.png",
+      "yellow": "assets/shapes/rectangle-yellow.png",
+      "green": "assets/shapes/rectangle-green.png",
+      "purple": "assets/shapes/rectangle-purple.png",
+      "orange": "assets/shapes/rectangle-orange.png",
+      "socket": "assets/shapes/rectangle-socket.png"
+    },
+    "star": {
+      "red": "assets/shapes/star-red.png",
+      "blue": "assets/shapes/star-blue.png",
+      "yellow": "assets/shapes/star-yellow.png",
+      "green": "assets/shapes/star-green.png",
+      "purple": "assets/shapes/star-purple.png",
+      "orange": "assets/shapes/star-orange.png",
+      "socket": "assets/shapes/star-socket.png"
+    },
+    "heart": {
+      "red": "assets/shapes/heart-red.png",
+      "blue": "assets/shapes/heart-blue.png",
+      "yellow": "assets/shapes/heart-yellow.png",
+      "green": "assets/shapes/heart-green.png",
+      "purple": "assets/shapes/heart-purple.png",
+      "orange": "assets/shapes/heart-orange.png",
+      "socket": "assets/shapes/heart-socket.png"
+    }
+  },
+  "caterpillar": {
+    "image": "assets/caterpillar/walk.png",
+    "metadata": "assets/caterpillar/walk.json"
+  }
+}

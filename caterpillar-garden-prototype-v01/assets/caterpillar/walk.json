@@ -1,0 +1,23 @@
+{
+  "frame_count": 18,
+  "recommended_fps": 8,
+  "loop": true,
+  "layout": {
+    "columns": 6,
+    "rows": 3
+  },
+  "frame_size_px": {
+    "width": 892,
+    "height": 470
+  },
+  "sheet_size_px": {
+    "width": 5352,
+    "height": 1410
+  },
+  "frame_order": "left-to-right, top-to-bottom",
+  "source_cycle_seconds": {
+    "start": 1.0,
+    "end_duplicate_pose": 3.25
+  },
+  "notes": "Transparent background. One arch-to-arch walk cycle. The endpoint pose at 3.25s is intentionally omitted because it duplicates the first frame for seamless looping."
+}
