@@ -14,7 +14,7 @@ export const CONFIG = Object.freeze({
   WOLF_RELEASE_RADIUS: 3.8,
   WOLF_TOUCH_MULTIPLIER: 1.4,
   WOLF_ZONE_RIGHT: 0.29,
-  PARENT_HOLD_MS: 4000,
+  PARENT_HOLD_MS: 1500,
   HINT_LOOK_MS: 6500,
   HINT_PIECE_MS: 15000,
   PATH_SAMPLE_MS: 50,
@@ -81,16 +81,77 @@ const trayOrder = [
   "uranus",
   "jupiter",
 ];
+export function matchesObject(object, accepts, mode) {
+  if (mode === "shape") return object.shape === accepts.shape;
+  if (mode === "shapeAndColour")
+    return object.shape === accepts.shape && object.colour === accepts.colour;
+  return object.id === accepts.id;
+}
+const shapeColours = [
+  ["red"],
+  ["blue", "red"],
+  ["yellow", "blue", "red"],
+  ["green", "yellow", "blue", "red"],
+];
+function colourLevel(number, items) {
+  const homes = [
+    [0.4, 0.28],
+    [0.56, 0.72],
+    [0.4, 0.72],
+    [0.56, 0.28],
+  ];
+  const slots = [
+    [0.75, 0.28],
+    [0.89, 0.72],
+    [0.75, 0.72],
+    [0.89, 0.28],
+  ];
+  return {
+    id: `colours-${number}`,
+    title: `Colour Match ${number}`,
+    group: "Colours",
+    matchMode: "shapeAndColour",
+    interactiveEnding: true,
+    radiusWidth: 0.049,
+    radiusHeight: 0.079,
+    socketStyle: "colouredShape",
+    portalObject: items[0][0] + "-" + items[0][1],
+    objects: items.map(([shape, colour], i) => ({
+      id: shape + "-" + colour,
+      shape,
+      colour,
+      renderer: "shapeSprite",
+      sprite: `shape_${shape}_${colour}`,
+      visualScale: 1,
+      touchMultiplier: 1,
+      minimumTouchScale: 0,
+      acquireMultiplier: 1,
+      releaseMultiplier: 1,
+      home: homes[i],
+      destination: {
+        id: shape + "-" + colour,
+        position: slots[i],
+        accepts: { shape, colour },
+      },
+    })),
+  };
+}
 export const LEVEL_DEFINITIONS = [
   ...LEVELS.map((layouts, index) => ({
     id: `shapes-${index + 1}`,
+    title: `Shape ${index + 1}`,
+    group: "Shapes",
+    matchMode: "shape",
+    interactiveEnding: true,
     radiusWidth: index === 0 ? 0.072 : 0.052,
     radiusHeight: index === 0 ? 0.115 : 0.081,
     socketStyle: "shape",
     portalObject: TYPES[0],
     objects: layouts.map((layout, i) => ({
       id: TYPES[i],
-      renderer: "shape",
+      renderer: "shapeSprite",
+      colour: shapeColours[index][i],
+      sprite: `shape_${TYPES[i]}_${shapeColours[index][i]}`,
       shape: TYPES[i],
       visualScale: 1,
       touchMultiplier: 1,
@@ -98,11 +159,31 @@ export const LEVEL_DEFINITIONS = [
       acquireMultiplier: 1,
       releaseMultiplier: 1,
       home: layout.slice(0, 2),
-      destination: { id: TYPES[i], position: layout.slice(2) },
+      destination: {
+        id: TYPES[i],
+        position: layout.slice(2),
+        accepts: { shape: TYPES[i] },
+      },
     })),
   })),
+  colourLevel(1, [
+    ["circle", "red"],
+    ["circle", "blue"],
+    ["circle", "yellow"],
+    ["circle", "green"],
+  ]),
+  colourLevel(2, [
+    ["heart", "red"],
+    ["star", "blue"],
+    ["triangle", "yellow"],
+    ["square", "green"],
+  ]),
   {
     id: "solar-system-order",
+    title: "Solar System Order",
+    group: "Space",
+    matchMode: "id",
+    interactiveEnding: true,
     radiusWidth: 0.039,
     radiusHeight: 0.07,
     companionRegion: "bottom",
@@ -135,7 +216,11 @@ export const LEVEL_DEFINITIONS = [
           tray < 5
             ? [0.08 + tray * 0.21, 0.36]
             : [0.185 + (tray - 5) * 0.21, 0.54],
-        destination: { id, position: [0.065 + index * (0.87 / 8), 0.14] },
+        destination: {
+          id,
+          position: [0.065 + index * (0.87 / 8), 0.14],
+          accepts: { id },
+        },
       };
     }),
   },

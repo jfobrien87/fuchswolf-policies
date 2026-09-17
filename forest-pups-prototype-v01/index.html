@@ -26,10 +26,19 @@
         aria-label="Drag a shape into its matching space. Wolf Pup waits beside you."
       ></canvas>
     </main>
-    <button
-      id="parent"
-      aria-label="Hold four seconds for parent tools"
-    ></button>
+    <button id="parent" aria-label="Hold for parent tools">
+      <svg viewBox="0 0 48 48" aria-hidden="true">
+        <circle class="hold-ring" cx="24" cy="24" r="21" />
+        <path d="M16 18h16M16 24h16M16 30h16" />
+      </svg>
+    </button>
+    <button id="sound" aria-label="Mute sound" aria-pressed="false">
+      <svg viewBox="0 0 48 48" aria-hidden="true">
+        <path d="M12 20h7l8-6v20l-8-6h-7z" />
+        <path class="sound-waves" d="M32 18q7 6 0 12" />
+        <path class="sound-off" d="M31 19l9 10m0-10l-9 10" />
+      </svg>
+    </button>
     <dialog id="debug">
       <h1>Forest Pups · Parent tools</h1>
       <p id="status"></p>
@@ -41,6 +50,10 @@
         ><button id="restart">Restart Level 1</button
         ><button id="reset">Reset telemetry</button>
       </div>
+      <label
+        >Activity
+        <select id="level-picker" aria-label="Choose activity"></select></label
+      ><button id="jump-level">Load activity</button>
       <fieldset>
         <legend>Observation overlays</legend>
         <label><input type="checkbox" id="hitboxes" /> Touch areas</label

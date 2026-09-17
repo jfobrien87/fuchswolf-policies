@@ -1,0 +1,9 @@
+<!doctype html><meta charset="utf-8"><title>Offline cache verification</title><button id="run">Check offline asset cache</button><pre id="result">Ready</pre>
+<script>
+document.querySelector('#run').onclick=async()=>{const out=document.querySelector('#result');try{
+await navigator.serviceWorker.register('../sw.js',{scope:'../'});await navigator.serviceWorker.ready;
+const cache=await caches.open('forest-pups-p01-1-polish-4'),paths=['index.html','style.css','game.js','config.js','shape-sprites.js','solar-sprites.js','assets/shapes.png','assets/solar-system.png','assets/wolf-poses.png','assets/fox.png','manifest.webmanifest'];
+for(const path of paths){const response=await cache.match(new URL('../'+path,location.href));if(!response?.ok)throw Error('Missing '+path)}
+out.textContent='PASS all current runtime modules and illustrations present in versioned offline cache';
+}catch(e){out.textContent='FAIL '+e.message}};
+</script>

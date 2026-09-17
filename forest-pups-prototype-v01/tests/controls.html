@@ -1,0 +1,28 @@
+<!doctype html><meta charset="utf-8"><title>Forest Pups controls regression</title>
+<button id="run">Test utility controls</button><pre id="result">Ready</pre><iframe src="../index.html?test=1" style="width:1180px;height:820px;border:0"></iframe>
+<script>
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+document.querySelector('#run').onclick=async()=>{
+ const out=document.querySelector('#result'),w=document.querySelector('iframe').contentWindow,d=w.document,c=d.querySelector('canvas'),S=()=>w.ForestPups.snapshot(),h=d.querySelector('#parent');
+ const assert=(v,m)=>{if(!v)throw Error(m)};
+ function event(el,type,id,x=0,y=0){el.dispatchEvent(new w.PointerEvent(type,{pointerId:id,pointerType:'touch',clientX:x,clientY:y,bubbles:true,cancelable:true}))}
+ try{
+ const p=S().state.pieces[0],rect=c.getBoundingClientRect();
+ event(c,'pointerdown',1,p.x+rect.left,p.y+rect.top);
+ assert(S().drag,'piece held');const mute=S().muted;
+ event(h,'pointerdown',2);d.querySelector('#sound').click();await sleep(1650);
+ assert(!d.querySelector('#debug').open && S().drag && S().muted===mute,'utilities preserve active drag');
+ event(h,'pointerup',2);event(c,'pointercancel',1);await sleep(350);
+ const wolf=S().state.wolf;event(c,'pointerdown',9,wolf.x*S().W+rect.left,wolf.y*S().H+rect.top);event(w,'pointerup',9);
+ event(h,'pointerdown',3);await sleep(800);event(h,'pointerup',3);await sleep(800);
+ assert(!d.querySelector('#debug').open,'released hold cancels');
+ event(h,'pointerdown',4);await sleep(500);event(h,'pointerdown',5);event(h,'pointerup',5);await sleep(800);assert(!d.querySelector('#debug').open,'does not open early');await sleep(300);
+ assert(d.querySelector('#debug').open,'opens after 1.5 seconds');event(h,'pointerup',4);
+ for(let i=0;i<7;i++){d.querySelector('#level-picker').value=i;d.querySelector('#jump-level').click();assert(S().state.level===i,'jump '+i)}
+ d.querySelector('#close').click();
+ const utility=d.querySelector('#sound').getBoundingClientRect(),canvasRect=c.getBoundingClientRect();
+ assert(utility.width>=44 && utility.height>=44 && utility.bottom<canvasRect.top,'reserved utility lane');
+ out.textContent='PASS active-drag isolation, cancelled/short/full holds, 7 parent-only level jumps and 48px controls outside puzzle canvas';
+ }catch(e){out.textContent='FAIL '+e.stack}
+};
+</script>

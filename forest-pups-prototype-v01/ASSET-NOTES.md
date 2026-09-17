@@ -25,3 +25,7 @@ Forest Pups reference artwork and characters remain the user's supplied IP. No t
 `assets/solar-system.png` is an unmodified copy of the user's supplied “Codex Image 12 Sept 2026, 21_29_10.png”, 1254×1254. Nine native-resolution rectangles in `solar-sprites.js` bind the sheet directly to the shared Canvas renderer, without resampling or redrawing the source file. Saturn and Uranus have additional clipping polygons through surrounding whitespace to exclude fragments of their neighbour's ring from overlapping rectangular bounds. Both complete rings are retained. Multiply compositing reduces the white-background boundary on the warm-white game canvas; this is not a true alpha extraction.
 
 The game preserves crop aspect ratios. Source crops exceed the displayed pixel requirements at typical tablet sizes with the existing 2× canvas scale cap. The supplied illustration replaces all development fallback artwork in normal play.
+
+## Prototype 01.2 shape sheet
+
+`assets/shapes.png` is an unmodified copy of `simple_shapes_puzzle_elements_spritesheet.png` (1225×1284). `shape-sprites.js` maps 6 rows × 5 columns to 24 coloured sprites and 6 recessed targets. Runtime cropping retains edge margins and source pixels; multiply compositing suppresses the white surround. No image generation, recolouring or procedural replacement is used for these puzzle assets. All 30 crops can be reviewed at `tests/shape-art.html`.

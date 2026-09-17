@@ -1,4 +1,4 @@
-import { resolveTarget } from "../config.js";
+import { resolveTarget, matchesObject } from "../config.js";
 const result = document.querySelector("#result"),
   sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function assert(v, m) {
@@ -15,6 +15,22 @@ document.querySelector("#run").onclick = async () => {
   document.querySelector("#run").disabled = true;
   const results = [];
   try {
+    assert(
+      matchesObject(
+        { shape: "circle", colour: "red" },
+        { shape: "circle", colour: "blue" },
+        "shape",
+      ),
+      "shape mode ignores colour",
+    );
+    assert(
+      !matchesObject(
+        { shape: "circle", colour: "red" },
+        { shape: "circle", colour: "blue" },
+        "shapeAndColour",
+      ),
+      "colour rule rejects wrong colour",
+    );
     const a = { id: "a", x: 100, y: 100 },
       b = { id: "b", x: 300, y: 100 };
     assert(
@@ -95,8 +111,8 @@ document.querySelector("#run").onclick = async () => {
           clientY: 10,
         }),
       );
-      await sleep(4150);
-      assert(doc.querySelector("#debug").open, "four-second parent gate");
+      await sleep(1600);
+      assert(doc.querySelector("#debug").open, "1.5-second parent gate");
       hotspot.dispatchEvent(
         new win.PointerEvent("pointerup", { pointerId: 99 }),
       );
@@ -124,19 +140,19 @@ document.querySelector("#run").onclick = async () => {
         for (let i = 0; i < v.state.pieces.length; i++) {
           const p = v.state.pieces[i];
           assert(
-            v.state.level === 4
+            v.state.level === 6
               ? p.home.y + v.hitRadii[i] < v.wolfBounds.top
               : p.home.x - v.hitRadii[i] > v.wolfBounds.right,
             "Wolf/source separation",
           );
           assert(
-            v.state.level === 4
+            v.state.level === 6
               ? p.target.y + p.radius < v.wolfBounds.top
               : p.target.x - p.radius > v.wolfBounds.right,
             "Wolf/target separation",
           );
         }
-        if (v.state.level === 4) {
+        if (v.state.level === 6) {
           assert(
             v.state.pieces.map((p) => p.type).join(",") ===
               "sun,mercury,venus,earth,mars,jupiter,saturn,uranus,neptune",
@@ -231,12 +247,12 @@ document.querySelector("#run").onclick = async () => {
       );
       assert(end.reacquisitions === 2, "exported reacquisitions");
       await until(() => S().state.phase === "portal", "first portal");
-      for (let level = 0; level < 5; level++) {
+      for (let level = 0; level < 7; level++) {
         s = S();
         geometry();
         assert(s.state.level === level, "level sequence");
         if (level > 0) {
-          if (level === 1 || level === 4) {
+          if (level === 1 || level === 4 || level === 5 || level === 6) {
             p = s.state.pieces[0];
             const wrong = s.state.targets[1];
             pointer("pointerdown", p.x, p.y);
@@ -250,41 +266,20 @@ document.querySelector("#run").onclick = async () => {
           }
           s = S();
           const wolf = { x: s.state.wolf.x * s.W, y: s.state.wolf.y * s.H };
-          const extendedX = s.wolfBounds.left + 4;
-          pointer("pointerdown", extendedX, wolf.y);
-          assert(S().drag?.kind === "wolf", "enlarged Wolf pickup");
+          pointer("pointerdown", s.wolfBounds.left + 4, wolf.y);
+          assert(!S().drag, "Wolf tap does not start drag");
+          pointer("pointermove", s.W * 0.7, s.H * 0.3);
+          pointer("pointerup", s.W * 0.7, s.H * 0.3);
           assert(
-            S().events.some((e) => e.type === "wolf_pickup_extended_bounds"),
-            "Wolf extended telemetry",
+            S().state.wolf.x === s.state.wolf.x &&
+              S().state.wolf.y === s.state.wolf.y,
+            "Wolf remains fixed",
           );
-          pointer("pointermove", wolf.x, s.H * (level === 4 ? 5 / 6 : 0.4));
           assert(
-            Math.abs(S().state.wolf.y - (level === 4 ? 5 / 6 : 0.6)) < 0.001,
-            "real Wolf stays at origin during drag",
+            S().events.some((e) => e.type === "wolf_tapped"),
+            "Wolf tap hook logged",
           );
-          pointer("pointerup", wolf.x, s.H * (level === 4 ? 5 / 6 : 0.4));
-          await sleep(500);
-          assert(
-            Math.abs(S().state.wolf.y - (level === 4 ? 5 / 6 : 0.4)) < 0.01,
-            "valid Wolf destination",
-          );
-          s = S();
-          wolf.y = s.state.wolf.y * s.H;
-          pointer("pointerdown", wolf.x, wolf.y);
-          assert(S().drag.kind === "wolf", "wolf pickup");
-          pointer("pointermove", s.state.pieces[0].x, s.state.pieces[0].y);
-          assert(
-            level === 4
-              ? S().drag.ghost.y > (S().H * 2) / 3
-              : S().drag.ghost.x < S().W * 0.28,
-            "ghost kept separate",
-          );
-          pointer("pointerup", s.state.pieces[0].x, s.state.pieces[0].y);
-          assert(
-            level === 4 ? S().state.wolf.y > 2 / 3 : S().state.wolf.x < 0.28,
-            "wolf kept separate",
-          );
-          if (level === 4) {
+          if (level === 6) {
             for (const piece of s.state.pieces) {
               pointer(
                 "pointerdown",
@@ -314,7 +309,7 @@ document.querySelector("#run").onclick = async () => {
         pointer("pointerup", s.state.portal.x - 5, s.state.portal.y + 7);
         await until(
           () =>
-            level === 4
+            level === 6
               ? S().state.phase === "final"
               : S().state.level === level + 1 && S().state.phase === "puzzle",
           "transition",
@@ -335,18 +330,18 @@ document.querySelector("#run").onclick = async () => {
         "final event",
       );
       assert(
-        s.events.filter((e) => e.type === "portal_interaction").length === 5,
-        "five portals",
+        s.events.filter((e) => e.type === "portal_interaction").length === 7,
+        "seven portals",
       );
       assert(
-        s.events.filter((e) => e.type === "correct_match").length === 19,
-        "nineteen matches",
+        s.events.filter((e) => e.type === "correct_match").length === 27,
+        "twenty-seven matches",
       );
       win.ForestPups.openDebug();
       const raw = JSON.parse(doc.querySelector("#raw").value);
       assert(
-        raw.prototype === "Forest Pups 01.1" &&
-          raw.levelDefinitions.length === 5,
+        raw.prototype === "Forest Pups 01.2" &&
+          raw.levelDefinitions.length === 7,
         "raw telemetry schema",
       );
       let exported = null;
@@ -361,6 +356,18 @@ document.querySelector("#run").onclick = async () => {
         json.events.some((e) => e.type === "target_reacquired"),
         "JSON export",
       );
+      assert(
+        doc.querySelectorAll("#level-picker option").length === 7,
+        "all activities in picker",
+      );
+      for (let i = 0; i < 7; i++) {
+        doc.querySelector("#level-picker").value = String(i);
+        doc.querySelector("#jump-level").click();
+        assert(
+          S().state.level === i && S().state.phase === "puzzle",
+          "picker jump " + i,
+        );
+      }
       doc.querySelector("#restart").click();
       doc.querySelector("#close").click();
       assert(S().state.level === 0, "restart");
@@ -376,13 +383,13 @@ document.querySelector("#run").onclick = async () => {
         `Frame intervals ${size.width}px: median ${Math.round(frameTimes[Math.floor(frameTimes.length * 0.5)])}ms, p95 ${Math.round(frameTimes[Math.floor(frameTimes.length * 0.95)])}ms${loadTimer ? " with 20ms main-thread stalls every 70ms" : ""}`,
       );
       results.push(
-        `PASS ${size.width} × ${size.height}: padded pickup, extra fingers, cancellation, repeated taps, empty/wrong release, acquire/cancel, release wobble, all 19 matches, 5 portals, final reunion, replay, telemetry reset`,
+        `PASS ${size.width} × ${size.height}: padded pickup, extra fingers, cancellation, repeated taps, empty/wrong release, acquire/cancel, release wobble, all 27 matches, 7 portals, final reunion, replay, telemetry reset`,
       );
       result.textContent = results.join("\n");
     }
     result.textContent =
       results.join("\n") +
-      "\nALL TESTS PASSED — includes safe geometry, resize cancellation, locked cancellation, valid Wolf relocation and final interaction";
+      "\nALL TESTS PASSED — includes safe geometry, resize cancellation, locked cancellation, fixed Wolf tap reaction and final interaction";
   } catch (e) {
     result.textContent = results.join("\n") + "\nFAIL " + e.stack;
   } finally {

@@ -43,7 +43,9 @@
         document.querySelector("#state").textContent = JSON.stringify(
           {
             level: s.state.level + 1,
-            audioState:s.audioState, muted:s.muted,
+            audioState: s.audioState,
+            muted: s.muted,
+            activeSounds: s.activeSounds,
             phase: s.state.phase,
             drag: s.drag
               ? {

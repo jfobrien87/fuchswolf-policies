@@ -1,10 +1,12 @@
-const CACHE = "forest-pups-p01-1-release-2";
+const CACHE = "forest-pups-p01-1-polish-4";
 const FILES = [
   "./",
   "./index.html",
   "./style.css",
   "./config.js",
   "./solar-sprites.js",
+  "./shape-sprites.js",
+  "./assets/shapes.png",
   "./game.js",
   "./manifest.webmanifest",
   "./assets/wolf-poses.png",

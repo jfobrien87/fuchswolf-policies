@@ -1,8 +1,10 @@
+import { SHAPE_SHEET, SHAPE_SPRITES } from "./shape-sprites.js";
 import {
   CONFIG as C,
   LEVEL_DEFINITIONS,
   distance,
   resolveTarget,
+  matchesObject,
 } from "./config.js";
 import {
   SOLAR_SHEET,
@@ -42,7 +44,7 @@ function flush() {
 function log(type, data = {}) {
   events.push({
     type,
-    prototype: "01.1",
+    prototype: "01.2",
     session,
     at: new Date().toISOString(),
     ms: Math.round(now() - sessionStart),
@@ -186,7 +188,28 @@ function shape(type, x, y, r, slot = false, alpha = 1, scale = 1) {
   );
   ctx.restore();
 }
+function drawShapeSprite(key, x, y, r, alpha = 1) {
+  const [sx, sy, sw, sh] = SHAPE_SPRITES[key].crop;
+  const fit = (2 * r) / Math.max(sw, sh);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = "multiply";
+  ctx.drawImage(
+    assets.shapes,
+    sx,
+    sy,
+    sw,
+    sh,
+    x - (sw * fit) / 2,
+    y - (sh * fit) / 2,
+    sw * fit,
+    sh * fit,
+  );
+  ctx.restore();
+}
 function drawObject(p, x, y, alpha = 1, scale = 1) {
+  if (p.definition.renderer === "shapeSprite")
+    return drawShapeSprite(p.definition.sprite, x, y, p.radius * scale, alpha);
   if (p.definition.renderer === "shape")
     return shape(p.type, x, y, p.radius, false, alpha, scale);
   const sprite = SOLAR_SPRITES[p.definition.sprite],
@@ -348,6 +371,23 @@ function react(pose, ms = 900) {
 }
 let audio = null,
   muted = false;
+let audioGeneration = 0;
+const sounding = new Set();
+function stopSounds() {
+  audioGeneration++;
+  for (const voice of sounding) {
+    try {
+      voice.stop();
+    } catch {}
+  }
+  sounding.clear();
+}
+function syncSoundUI() {
+  $("sound").classList.toggle("muted", muted);
+  $("sound").setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
+  $("sound").setAttribute("aria-pressed", String(muted));
+  $("mute").checked = muted;
+}
 function unlockAudio() {
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
@@ -358,10 +398,12 @@ function unlockAudio() {
 function sound(kind) {
   if (!audio || muted) return;
   if (audio.state !== "running") {
+    const generation = audioGeneration;
     audio
       .resume()
       .then(() => {
-        if (audio.state === "running") playSound(kind);
+        if (audio.state === "running" && generation === audioGeneration)
+          playSound(kind);
       })
       .catch(() => log("audio_resume_failed"));
     return;
@@ -393,6 +435,12 @@ function playSound(kind) {
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
     o.connect(g);
     g.connect(audio.destination);
+    sounding.add(o);
+    o.onended = () => {
+      sounding.delete(o);
+      o.disconnect();
+      g.disconnect();
+    };
     o.start(t);
     o.stop(t + 0.26);
   });
@@ -450,6 +498,7 @@ function startLevel(index) {
   state.wolfMove = null;
   state.wolf = bottomCompanion() ? { x: 0.5, y: 5 / 6 } : { x: 0.15, y: 0.6 };
   state.reaction = "idle";
+  state.wolfTapAt = null;
   state.levelStart = now();
   state.firstDrag = false;
   state.firstMatch = false;
@@ -459,6 +508,8 @@ function startLevel(index) {
     const target = {
       id: `L${index + 1}-${definition.destination.id}`,
       type: definition.id,
+      accepts: definition.destination.accepts,
+      occupiedBy: null,
       x: 0,
       y: 0,
     };
@@ -521,6 +572,13 @@ function capture(e) {
     log("capture_unavailable");
   }
 }
+// Replace this small reaction hook with a future authored flip animation.
+function onWolfTapped(hitRegion) {
+  state.wolfTapAt = now();
+  react("happy", 650);
+  sound("friend");
+  log("wolf_tapped", { hitRegion });
+}
 function down(e) {
   if (e.pointerType === "mouse" && e.button !== 0) return;
   e.preventDefault();
@@ -541,6 +599,7 @@ function down(e) {
     if (drag) log("additional_touch_ignored", { pointer: e.pointerId });
     return;
   }
+  clearHold();
   const q = point(e);
   activity();
   if (state.phase === "final") {
@@ -612,6 +671,11 @@ function down(e) {
       ? "visible_bounds"
       : "extended_bounds";
     log("wolf_touched", { hitRegion });
+    if (state.phase === "puzzle") {
+      onWolfTapped(hitRegion);
+      return;
+    }
+    if (state.phase !== "portal" || !state.definition.interactiveEnding) return;
     if (hitRegion === "extended_bounds") log("wolf_pickup_extended_bounds");
     drag = {
       kind: "wolf",
@@ -743,7 +807,8 @@ function moveOne(e) {
       p,
       state.targets.filter(
         (t) =>
-          t.type === p.type && !state.pieces.find((s) => s.target === t)?.done,
+          matchesObject(p.definition, t.accepts, state.definition.matchMode) &&
+          !t.occupiedBy,
       ),
       acquireRadius(p),
       releaseRadius(p),
@@ -807,6 +872,10 @@ function up(e) {
     const p = d.piece;
     if (d.lock) {
       p.done = true;
+      d.lock.occupiedBy = p.id;
+      p.target = d.lock;
+      p.layout[2] = d.lock.x / W;
+      p.layout[3] = d.lock.y / H;
       tween(p, d.lock.x, d.lock.y, C.TARGET_SNAP_DURATION);
       log("correct_match", { shape: p.type, attempts: p.attempts });
       log("successful_snap", { shape: p.type, target: d.lock.id });
@@ -832,7 +901,9 @@ function up(e) {
       }
     } else {
       const wrong = state.targets.find(
-        (t) => t.type !== p.type && distance(p, t) < acquireRadius(p),
+        (t) =>
+          !matchesObject(p.definition, t.accepts, state.definition.matchMode) &&
+          distance(p, t) < acquireRadius(p),
       );
       log(wrong ? "incorrect_target_attempt" : "empty_space_release", {
         shape: p.type,
@@ -891,6 +962,11 @@ function cancelDrag(reason) {
 canvas.addEventListener("pointerdown", down);
 canvas.addEventListener("pointermove", move);
 canvas.addEventListener("pointerup", up);
+// Non-drag taps (including Wolf) may be released beyond the canvas.
+for (const type of ["pointerup", "pointercancel"])
+  window.addEventListener(type, (e) => activePointers.delete(e.pointerId), {
+    passive: true,
+  });
 canvas.addEventListener("pointercancel", (e) => {
   activePointers.delete(e.pointerId);
   if (drag?.id === e.pointerId) cancelDrag("pointercancel");
@@ -929,7 +1005,13 @@ function drawPortal(t) {
   drawObject(object, p.x, p.y, 0.8);
   ctx.save();
   ctx.translate(p.x, p.y);
-  shapePath(ctx, object.definition.shape || "circle", R * 0.9);
+  shapePath(
+    ctx,
+    ["circle", "triangle", "square", "star"].includes(object.definition.shape)
+      ? object.definition.shape
+      : "circle",
+    R * 0.9,
+  );
   const g = ctx.createRadialGradient(0, 0, 3, 0, 0, R);
   g.addColorStop(0, "#fffdf8");
   g.addColorStop(0.7, "#eef4d9");
@@ -1008,7 +1090,22 @@ function draw(t) {
     for (const target of state.targets) {
       if (state.definition.socketStyle === "neutral")
         ring(target.x, target.y, R * 0.72, "#b6b5a180");
-      else shape(target.type, target.x, target.y, R, true);
+      else {
+        drawShapeSprite(
+          `target_${target.accepts.shape}`,
+          target.x,
+          target.y,
+          R,
+        );
+        if (state.definition.socketStyle === "colouredShape")
+          drawShapeSprite(
+            `shape_${target.accepts.shape}_${target.accepts.colour}`,
+            target.x,
+            target.y,
+            R * 0.88,
+            0.90,
+          );
+      }
     }
     if (
       drag?.lock &&
@@ -1062,6 +1159,15 @@ function draw(t) {
       pose = state.reaction,
       tilt = pose === "curious" ? 0.055 : 0,
       bounce = 0;
+    if (
+      state.phase === "puzzle" &&
+      state.wolfTapAt !== null &&
+      t - state.wolfTapAt < 650
+    ) {
+      const hop = Math.sin(((t - state.wolfTapAt) / 650) * Math.PI);
+      bounce = hop * 12;
+      tilt = hop * 0.1;
+    }
     if (state.phase === "celebrate")
       bounce = Math.abs(Math.sin((t - state.completeAt) / 150)) * 12;
     if (state.phase === "travel" || state.phase === "fade") {
@@ -1199,7 +1305,7 @@ function draw(t) {
 }
 function snapshot() {
   return {
-    prototype: "Forest Pups 01.1",
+    prototype: "Forest Pups 01.2",
     artStatus: SOLAR_ART_PENDING ? "solar-sheet-pending" : "complete",
     levelDefinitions: LEVEL_DEFINITIONS,
     exportedAt: new Date().toISOString(),
@@ -1216,7 +1322,7 @@ function updateDebug() {
       {},
     );
   $("status").textContent =
-    `Prototype 01.1${SOLAR_ART_PENDING ? " · Solar System development art (sheet pending)" : ""} · Level ${state.level + 1} · ${state.phase} · ${events.length} saved events · ${storageOK ? "local storage available" : "storage unavailable — export before closing"} · ${navigator.serviceWorker?.controller ? "offline cache active" : "offline cache not yet controlling this page"}`;
+    `Prototype 01.2${SOLAR_ART_PENDING ? " · Solar System development art (sheet pending)" : ""} · Level ${state.level + 1} · ${state.phase} · ${events.length} saved events · ${storageOK ? "local storage available" : "storage unavailable — export before closing"} · ${navigator.serviceWorker?.controller ? "offline cache active" : "offline cache not yet controlling this page"}`;
   $("metrics").textContent = JSON.stringify(
     {
       matches: counts.correct_match || 0,
@@ -1251,35 +1357,43 @@ function openDebug() {
   dialog.showModal();
   log("parent_tools_opened");
   flush();
+  $("level-picker").value = String(state.level);
   updateDebug();
 }
 let hold = null,
   holdStart = null;
 const hotspot = $("parent");
 hotspot.addEventListener("pointerdown", (e) => {
-  if (drag || activePointers.size) return;
+  if (drag || activePointers.size || holdStart) return;
   e.preventDefault();
   holdStart = { id: e.pointerId, x: e.clientX, y: e.clientY };
   try {
     hotspot.setPointerCapture(e.pointerId);
   } catch {}
-  hold = setTimeout(openDebug, C.PARENT_HOLD_MS);
+  hotspot.classList.add("holding");
+  hold = setTimeout(() => {
+    clearHold();
+    if (!drag && !activePointers.size) openDebug();
+  }, C.PARENT_HOLD_MS);
 });
 const clearHold = () => {
   clearTimeout(hold);
   hold = null;
   holdStart = null;
+  hotspot.classList.remove("holding");
 };
 hotspot.addEventListener("pointermove", (e) => {
   if (
-    holdStart &&
+    holdStart && e.pointerId === holdStart.id &&
     Math.hypot(e.clientX - holdStart.x, e.clientY - holdStart.y) > 10
   )
     clearHold();
 });
 ["pointerup", "pointercancel", "lostpointercapture"].forEach((t) =>
-  hotspot.addEventListener(t, clearHold),
+  hotspot.addEventListener(t, e => {if (e.pointerId === holdStart?.id) clearHold();}),
 );
+window.addEventListener("blur",clearHold);
+document.addEventListener("visibilitychange",()=>{if(document.hidden)clearHold();});
 function resume() {
   const delta = now() - pausedAt;
   state.levelStart += delta;
@@ -1340,22 +1454,56 @@ $("copy").onclick = async () => {
   }
 };
 $("test-sound").onclick = () => {
+  stopSounds();
   muted = false;
-  $("mute").checked = false;
+  syncSoundUI();
   unlockAudio();
-  sound("friend");
+  sound("pickup");
 };
-document.addEventListener("pointerdown", unlockAudio, {
-  capture: true,
-  passive: true,
-});
+$("sound").onclick = () => {
+  if (drag || activePointers.size) return;
+  clearHold();
+  const needsUnlock = !audio || audio.state !== "running";
+  stopSounds();
+  muted = needsUnlock ? false : !muted;
+  syncSoundUI();
+  unlockAudio();
+  if (!muted) sound("pickup");
+  log("sound_control", { muted });
+};
 $("mute").onchange = (e) => {
+  stopSounds();
   muted = e.target.checked;
+  syncSoundUI();
 };
+const picker = $("level-picker");
+for (const group of ["Shapes", "Colours", "Space"]) {
+  const optgroup = document.createElement("optgroup");
+  optgroup.label = group;
+  LEVEL_DEFINITIONS.forEach((level, index) => {
+    if (level.group === group) {
+      const option = document.createElement("option");
+      option.value = index;
+      option.textContent = level.title;
+      optgroup.append(option);
+    }
+  });
+  picker.append(optgroup);
+}
+$("jump-level").onclick = () => {
+  cancelDrag("level_jump");
+  activePointers.clear();
+  log("parent_level_jump", { destination: Number(picker.value) });
+  startLevel(Number(picker.value));
+  pausedAt = now();
+  updateDebug();
+};
+syncSoundUI();
 log("session_start", { userAgent: navigator.userAgent });
 resize();
 requestAnimationFrame(draw);
 Promise.all([
+  loadImage("shapes", SHAPE_SHEET),
   loadImage("wolf", "assets/wolf-poses.png"),
   loadImage("fox", "assets/fox.png"),
   ...(SOLAR_SHEET ? [loadImage("solarSystem", SOLAR_SHEET)] : []),
@@ -1383,6 +1531,7 @@ window.ForestPups = {
       hitRadii: state.pieces.map((p) => hitRadius(p)),
       wolfBounds: wolfBounds(true),
       audioState: audio?.state || "not-started",
+      activeSounds: sounding.size,
       muted,
     }),
   openDebug,

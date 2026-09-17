@@ -88,3 +88,17 @@ Final in-game visual check on 13 September: all nine supplied illustrations rend
 ## Audio recovery and bottom-companion Solar layout
 
 Re-ran the full regression after changing Solar to full-width targets/two tray rows and a protected bottom third. All three viewports passed all 19 matches, five portals, retained-lock release wobble, cancellation, extended pickups, export/replay and region-specific Wolf safety tests. Visually checked the larger illustrated layout in-game. A real browser drag produced a captured successful release with audio state `running` and `muted: false`. This verifies activation, not physical speaker output; listening on the iPad remains necessary. Parent tools include an explicit enable/test sound action.
+
+## Prototype 01.2 — 16 September 2026
+
+Passed the updated full suite at 1180×820, 900×600 (20ms artificial main-thread stalls every 70ms) and 768×1024: 27 placements, seven portals, final reunion, enlarged pickup, extra fingers, pointer cancellation, incorrect/empty release, hysteresis and release wobble, lock cancellation/reacquisition, fixed Wolf tap reactions, telemetry export/reset, replay and all seven parent-picker destinations. Pure matching tests verify shape-only ignores colour and shape-and-colour rejects a wrong colour. Colour A explicitly exercises a wrong-colour circle destination. Typical desktop median/p95 frame intervals were 8/9ms, 8/17ms with stalls and 8/9ms; these are not iPad latency measurements.
+
+Separate controls suite passed active-drag isolation, short/cancelled/full holds, no early opening at 1300ms, opening after 1500ms, secondary-finger hold ownership, a Wolf tap released beyond the canvas, grouped level jumps and a minimum 48px utility target outside the game canvas. Real browser clicks unlocked audio and toggled mute/unmute, including repeated clicks. Audio engine state was running; physical audibility remains a device check.
+
+Visually reviewed all 30 sprite crops, Level 1 and Colour Match 1. Soft edges and supplied colours remain intact; coloured recesses use the actual supplied sprite at low opacity.
+
+Verified the new versioned offline cache contains runtime modules, both supplied sheets and character assets. Stopped the local server, reloaded the root game successfully from cache, and completed Level 1 with a real browser drag while offline. Restarted the server afterward. Actual iPad/Home Screen storage retention, native touch feel, audio interruption recovery, hold comfort and export dialogs remain manual checks.
+
+## Stronger colour targets — 17 September 2026
+
+Raised the shared colour-destination overlay from 32% to 90% opacity for both colour activities, retaining the inset recessed rim. Visually verified red, blue, yellow and green destinations in the running Colour Match 1 activity. Syntax and service-worker asset paths passed; cache version advanced to polish-4. This rendering-only change does not alter matching or input logic.

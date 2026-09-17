@@ -1,8 +1,8 @@
-# Forest Pups — Preschool Interaction Prototype 01.1
+# Forest Pups — Preschool Interaction Prototype 01.2
 
-A complete, dependency-free static game for testing drag → match → release with a 2½-year-old. Four deterministic shape levels and a fifth Solar System ordering level lead through Wolf's ghost-destination portal interaction to a Wolf-and-Fox friendship vignette. No accounts, external services, analytics requests, menus in normal play, scores or spoken instructions.
+A complete, dependency-free static game for testing drag → match → release with a 2½-year-old. Four deterministic shape levels, two colour activities and a Solar System ordering level lead through Wolf's ghost-destination portal interaction to a Wolf-and-Fox friendship vignette. No accounts, external services, analytics requests, menus in normal play, scores or spoken instructions.
 
-**Prototype 01.1 includes the supplied illustrated Solar System sheet.** See `UPDATE-01.1.md` for changes and verification.
+**Prototype 01.2 includes supplied shape and Solar System artwork, two colour activities, visible utility controls and an adult activity picker.** See `UPDATE-01.2.md`.
 
 ## Run locally
 
@@ -37,7 +37,7 @@ A fresh launch starts at Level 1; telemetry persists. Safari and an installed Ho
 
 ## Parent tools and telemetry
 
-Hold the **tiny pale dot in the top-right corner for four seconds**, without moving more than 10 CSS pixels. The game pauses while the panel is open. This is an observational convenience, not a security boundary.
+Hold the **hamburger in the top-right corner for 1.5 seconds**, without moving more than 10 CSS pixels. The game pauses while the panel is open. This is an observational convenience, not a security boundary.
 
 The panel provides:
 
@@ -47,6 +47,9 @@ The panel provides:
 - **Restart Level 1**, preserving history with a restart event.
 - **Reset telemetry**, clearing history and starting a new session at Level 1.
 - Independent overlays for hitboxes, acquisition zones, cancellation zones and the retained destination, plus mute.
+- A grouped activity picker for Shapes, Colours and Space.
+
+The top-left speaker is always available: tap to unlock sound, then tap to mute/unmute. Utility buttons are outside the puzzle canvas and ignore secondary touches during a drag.
 
 Turn overlays off before testing the child. The JSON includes the configuration and viewport, so sessions can be compared after changing tolerance values.
 
@@ -84,8 +87,8 @@ Wolf’s pickup envelope is 1.4× his idle footprint, clipped to the protected r
 - Pointer Events acquire immediately on pointer-down. Pointer capture retains ownership outside the original artwork and hit region.
 - One gesture owns interaction at a time. Additional fingers do not steal or release it. Pointer cancellation, capture loss, blur and visibility loss restore an active piece safely.
 - The play surface prevents scrolling, selection, context menus and browser image dragging.
-- Wolf has a protected left region. Puzzle pieces, including dragged pieces, remain outside that region. Wolf's ordinary ghost destinations are constrained to it; releases in puzzle space are rejected.
-- The real Wolf remains in place during a ghost drag. A valid release starts a simple translation to the indicated destination.
+- Wolf stays in a protected left region for Shapes/Colours and the bottom third for Solar. During puzzles he is tappable but cannot be dragged; taps trigger a reusable happy-reaction hook.
+- After completion, the real Wolf remains in place during a ghost drag. A valid portal release starts the transition.
 - Only after all pieces are locked may Wolf cross puzzle space to enter a portal. The completed circle (or Sun in Level 5) becomes a softly glowing circular passage. Portal placement also uses hysteresis.
 - Hints begin with a brief curious pose after 6.5 seconds, then one gentle piece bob after 15 seconds. Portal hints use a few quiet destination dots, without auto-completing the interaction.
 
@@ -94,9 +97,9 @@ Wolf’s pickup envelope is 1.4× his idle footprint, clipped to the protected r
 - Single Canvas 2D play surface, DOM parent panel, ES modules, cached shape textures and a maximum device-pixel ratio of 2. No framework or runtime dependencies.
 - Wolf uses rectangular sprite regions of the **supplied pose sheet**, without a redesign. A multiply blend lets its white source background sit on the warm-white canvas. Curious/playful poses use simple sprite swaps; there is no rig, locomotion or procedural animation. The pose variants have slightly different silhouettes.
 - Fox is an AI-extracted transparent sprite based on the book's Fox illustration. The final scene uses two static sprites and brief tweens; tapping either pup repeats the happy bounce and soft chime.
-- Shapes are original, lightly textured, code-drawn pieces. Destinations are neutral silhouettes so colour alone does not identify a slot.
+- Shapes and recesses use native-resolution crops of the supplied shape sheet. Shape levels match silhouette only; colour levels use a strong supplied colour overlay on the recess and match shape plus colour.
 - Audio is a small set of quiet synthesized tones, rather than recorded Wolf vocalisations. It unlocks on the first touch; no network audio is loaded.
-- Wolf's ordinary ghost is clamped to his safe strip rather than following a finger through puzzle space. The portal ghost follows the finger freely once puzzle interaction is locked.
+- Wolf ghost dragging is available only for configured completion portals, after puzzle objects are locked.
 - The game responds to portrait dimensions, but the study is designed for landscape. It has no rotate-device instruction or screen-orientation enforcement.
 - Progress is not resumed after reload; telemetry is retained. This keeps repeat trials deterministic.
 
@@ -127,12 +130,13 @@ Begin without an explanation, record any adult assistance, and do not demonstrat
 - `index.html`, `style.css`: full-screen play surface and hidden adult tools.
 - `game.js`: input ownership, game phases, rendering, audio and local telemetry.
 - `config.js`: tolerances, level layouts and pure hysteresis rule.
+- `shape-sprites.js`: all 24 coloured pieces and six neutral shape recesses.
 - `solar-sprites.js`: supplied sheet URL, native-resolution crop rectangles and ring-safe clipping metadata.
 - `assets/`: supplied Wolf sheet, derived Fox sprite and app icons.
 - `manifest.webmanifest`, `sw.js`, `.nojekyll`: static/PWA deployment.
 - `tests/`: optional browser regression harness.
 - `ASSET-NOTES.md`: source provenance and extraction prompt.
 
-## Latest 01.1 layout/audio adjustment
+## Solar layout and audio
 
-Level 5 uses a full-width ordering strip, two rows of larger planets, and Wolf's protected bottom third. Levels 1–4 retain their existing layout. If sound is silent, hold the parent hotspot and press **Enable / test sound**. This unmutes the game and retries browser audio activation. Also check device volume and output route. Reopen online after replacing the deployed files so the updated service worker can activate.
+The Solar activity uses a full-width ordering strip, two rows of larger planets, and Wolf's protected bottom third. Levels 1–4 retain their existing layout. If sound is silent, hold the parent hotspot and press **Enable / test sound**. This unmutes the game and retries browser audio activation. Also check device volume and output route. Reopen online after replacing the deployed files so the updated service worker can activate.

@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><title>Forest Pups shape crop proof</title>
+<style>body{background:#fffdf8;font:10px system-ui;margin:8px}main{display:grid;grid-template-columns:repeat(5,1fr)}figure{margin:0;text-align:center}canvas{height:13vh;max-width:100%;object-fit:contain}figcaption{height:2vh}</style><main></main>
+<script type="module">
+import {SHAPE_SHEET,SHAPE_SPRITES} from '../shape-sprites.js';
+const img=new Image();img.src='../'+SHAPE_SHEET;await img.decode();
+for(const [name,{crop:[x,y,w,h]}] of Object.entries(SHAPE_SPRITES)){
+const f=document.createElement('figure'),c=document.createElement('canvas'),cap=document.createElement('figcaption');c.width=c.height=250;
+const ctx=c.getContext('2d');ctx.fillStyle='#fffdf8';ctx.fillRect(0,0,250,250);ctx.globalCompositeOperation='multiply';const fit=240/Math.max(w,h);ctx.drawImage(img,x,y,w,h,(250-w*fit)/2,(250-h*fit)/2,w*fit,h*fit);cap.textContent=name;f.append(c,cap);document.querySelector('main').append(f);
+}
+</script>
