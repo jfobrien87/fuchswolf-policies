@@ -13,7 +13,9 @@ columns = [(44,234), (249,438), (454,643), (659,848), (866,1055), (1073,1261), (
 rows = [(8,168), (172,320), (327,475), (479,638), (638,808), (815,985)]
 shapes = ['circle','square','triangle','rectangle','star','heart']
 colours = ['red','blue','yellow','green','purple','orange','socket']
-manifest = {'shapes': {}, 'caterpillar': {'image':'assets/caterpillar/walk.png','metadata':'assets/caterpillar/walk.json'}}
+manifest_path = root / 'assets/manifest.json'
+manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+manifest.update({'shapes': {}, 'caterpillar': {'image':'assets/caterpillar/walk.png','metadata':'assets/caterpillar/walk.json'}})
 for shape, (top,bottom) in zip(shapes,rows):
     manifest['shapes'][shape] = {}
     for colour,(left,right) in zip(colours,columns):

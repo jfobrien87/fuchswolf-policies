@@ -2,7 +2,16 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; }
 body { position: fixed; inset: 0; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-main { width: 100%; height: 100%; height: 100dvh; display: grid; place-items: center; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+main { position: relative; width: 100%; height: 100%; height: 100dvh; display: grid; place-items: center; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 canvas { display: block; touch-action: none; max-width: 100%; max-height: 100%; }
 #load-error { position: absolute; width: min(80%, 400px); text-align: center; color: #496044; font: 20px/1.5 system-ui, sans-serif; }
 [hidden] { display: none !important; }
+#sound-toggle { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 20px); right: calc(env(safe-area-inset-right, 0px) + 20px); width: 58px; height: 58px; display: grid; place-items: center; padding: 15px; border: 1px solid #d6dbc2; border-radius: 50%; background: #eeefdf; color: #708355; cursor: pointer; touch-action: none; }
+#sound-toggle svg { width: 27px; height: 27px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#sound-toggle .sound-off, #sound-toggle[data-muted="true"] .sound-on { display: none; }
+#sound-toggle[data-muted="true"] .sound-off { display: block; }
+#sound-toggle[data-muted="true"] { color: #999d89; background: #efeee4; }
+#sound-toggle:focus-visible { outline: 3px solid #a5b783; outline-offset: 5px; }
+#sound-toggle::after { content: ''; pointer-events: none; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid #a5b783; opacity: 0; }
+#sound-toggle.holding::after { animation: sound-hold var(--hold-duration) linear forwards; }
+@keyframes sound-hold { from { opacity: .1; transform: scale(.9); } to { opacity: 1; transform: scale(1); } }

@@ -58,5 +58,15 @@
   "caterpillar": {
     "image": "assets/caterpillar/walk.png",
     "metadata": "assets/caterpillar/walk.json"
+  },
+  "audio": {
+    "music": "assets/audio/music.mp3",
+    "sfx": {
+      "pickup": "assets/audio/pickup.wav",
+      "correct": "assets/audio/correct.wav",
+      "return": "assets/audio/return.wav",
+      "complete": "assets/audio/complete.wav",
+      "door": "assets/audio/door.wav"
+    }
   }
 }

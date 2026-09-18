@@ -32,5 +32,13 @@ export const CONFIG = {
   PIECE_SIZE: 126,
   SOCKET_SIZE: 150,
   SOCKET_COLOUR_HINT_OPACITY: .38,
+  AUDIO: {
+    MUSIC_VOLUME: .30,
+    SFX_VOLUME: .70,
+    SFX_MULTIPLIERS: { pickup: .75, correct: 1, return: .65, complete: .90, door: .75 },
+    MAX_SFX_VOICES: 6,
+    HOLD_TO_RESET_MS: 700,
+    MUTE_STORAGE_KEY: 'caterpillar-garden-muted',
+  },
   PORTAL: { x: 1102, y: 423, width: 156, height: 240, occlusionX: 1190 },
 };

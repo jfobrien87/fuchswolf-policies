@@ -1,5 +1,8 @@
 import { CONFIG as C } from './config.js';
 import { LEVELS } from './levels.js';
+import { audio, bindSoundControl } from './audio.js';
+
+bindSoundControl(document.querySelector('#sound-toggle'));
 
 const canvas = document.querySelector('#game');
 const ctx = canvas.getContext('2d', { alpha: false });
@@ -197,6 +200,7 @@ function animatePiece(p, target, kind) {
   p.motion={from:{x:p.x,y:p.y},target,kind,t:0,duration:kind==='snap'?C.SNAP_DURATION:C.RETURN_DURATION};
 }
 function update(dt) {
+  const previousElapsed=elapsed;
   elapsed+=dt;
   if(guidePointerId===null)guideMarkerFade=Math.max(0,guideMarkerFade-dt);
   for(const p of pieces) if(p.motion) {
@@ -209,7 +213,8 @@ function update(dt) {
     walking=true;actorX=Math.min(C.CATERPILLAR_REST_X,actorX+C.CATERPILLAR_WALK_SPEED*dt/1000);
     if(actorX===C.CATERPILLAR_REST_X) {walking=false;setState(STATES.PLAYING);}
   } else if(state===STATES.COMPLETE) {
-    if(elapsed>=C.COMPLETION_DELAY+C.HAPPY_DURATION)open=true;
+    if(previousElapsed<C.COMPLETION_DELAY&&elapsed>=C.COMPLETION_DELAY)audio.playSfx('complete');
+    if(!open&&elapsed>=C.COMPLETION_DELAY+C.HAPPY_DURATION) {open=true;audio.playSfx('door');}
     if(elapsed>=C.COMPLETION_DELAY+C.HAPPY_DURATION+C.DOOR_OPEN_DELAY) {
       guideTargetX=actorX;setState(STATES.GUIDE_TO_EXIT);
     }
@@ -265,6 +270,7 @@ function startDrag(event) {
   const piece=candidates[0];if(!piece)return;
   piece.motion=null;
   active={piece,id:event.pointerId,offset:{x:pos.x-piece.x,y:pos.y-piece.y}};
+  audio.playSfx('pickup');
   canvas.setPointerCapture(event.pointerId);render();
 }
 function moveDrag(event) {
@@ -287,8 +293,12 @@ function finishDrag(event,cancelled=false) {
   const target=sockets.find(s=>s.id===p.targetId&&s.shape===p.shape&&s.colour===p.colour);
   if(!cancelled&&target&&Math.hypot(p.x-target.x,p.y-target.y)<=C.SNAP_RADIUS) {
     p.placed=true;animatePiece(p,target,'snap');
+    audio.playSfx('correct');
     if(pieces.every(piece=>piece.placed))setState(STATES.COMPLETE);
-  } else animatePiece(p,p.start,'return');
+  } else {
+    animatePiece(p,p.start,'return');
+    if(!cancelled)audio.playSfx('return');
+  }
 }
 canvas.addEventListener('pointerdown',startDrag);
 canvas.addEventListener('pointermove',moveDrag);
@@ -346,6 +356,7 @@ async function boot() {
   }
   const initialIndex=C.DEBUG ? C.DEBUG_START_LEVEL-1 : C.INITIAL_LEVEL_INDEX;
   if(!Number.isInteger(initialIndex)||initialIndex<0||initialIndex>=LEVELS.length)throw new Error('Invalid starting level');
+  await audio.init(manifest.audio).catch(error=>console.warn('Audio could not initialize; gameplay can continue.',error));
   ready=true;loadLevel(initialIndex);requestAnimationFrame(tick);
 }
 

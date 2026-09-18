@@ -14,6 +14,10 @@
 <body>
   <main aria-label="Caterpillar shape matching game">
     <canvas id="game" width="1280" height="800" aria-label="Match the shapes and colours to their sockets, then lead the caterpillar into the open door to play the next puzzle.">A shape and colour matching game. Please use a browser with canvas support.</canvas>
+    <button id="sound-toggle" type="button" aria-label="Mute sound" aria-pressed="false" aria-description="Tap to toggle sound. Hold, then release to recover audio without restarting the puzzle." data-muted="false">
+      <svg class="sound-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></svg>
+      <svg class="sound-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="m17 9 5 6m0-6-5 6"/></svg>
+    </button>
     <p id="load-error" role="alert" hidden>The garden couldn’t load. Please reconnect and reload once.</p>
   </main>
   <script type="module" src="game.js"></script>
