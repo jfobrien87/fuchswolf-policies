@@ -11,6 +11,14 @@ const EXPECTED = [
   ['circle:green','square:green','triangle:green','star:green'],
   ['heart:purple','rectangle:orange','triangle:blue','star:red','circle:yellow'],
   ['circle:orange','square:green','triangle:purple','rectangle:blue','star:red','heart:yellow'],
+  ['star:red','star:blue','star:yellow','star:green','star:purple'],
+  ['circle:orange','square:orange','triangle:orange','rectangle:orange','heart:orange'],
+  ['circle:purple','square:yellow','triangle:red','rectangle:blue','star:green','heart:orange'],
+  ['circle:red','circle:blue','square:yellow','square:green','triangle:purple','triangle:orange'],
+  ['heart:red','heart:blue','heart:yellow','heart:green','heart:purple','heart:orange'],
+  ['rectangle:red','rectangle:blue','rectangle:yellow','rectangle:green','rectangle:purple','rectangle:orange'],
+  ['circle:green','square:orange','triangle:blue','rectangle:purple','star:yellow','heart:red'],
+  ['circle:red','square:blue','triangle:yellow','rectangle:green','star:purple','heart:orange','circle:blue'],
 ];
 
 (async()=>{
@@ -38,9 +46,9 @@ const EXPECTED = [
     const originalMainDocumentLoads=documentLoads;
     // All art and levels have been precached. Test the complete progression offline.
     await context.setOffline(true);
-    for(let index=0;index<8;index++) {
+    for(let index=0;index<16;index++) {
       let s=await snapshot();
-      assert.equal(s.state,'ENTERING');assert.equal(s.currentLevelIndex,index);assert.equal(s.levelCount,8);
+      assert.equal(s.state,'ENTERING');assert.equal(s.currentLevelIndex,index);assert.equal(s.levelCount,16);
       assert.ok(s.actorX<=-295);assert.equal(s.open,false);assert.equal(s.guiding,false);
       assert.equal(s.guideMarker.opacity,0);assert.ok(s.pieces.every(p=>!p.placed&&!p.animating));
       await advance(250);assert.equal((await snapshot()).actorX,-295,'entrance delay preserved');
@@ -48,6 +56,16 @@ const EXPECTED = [
       assert.equal(s.state,'PLAYING');assert.equal(s.actorX,65);
       assert.deepEqual(s.pieces.map(p=>`${p.shape}:${p.colour}`),EXPECTED[index]);
       assert.equal(new Set(s.pieces.map(p=>p.id)).size,s.pieces.length);
+      assert.equal(new Set(s.pieces.map(p=>p.slotIndex)).size,s.pieces.length);
+      assert.ok(s.pieces.some((p,i)=>p.slotIndex!==i),'never the entire socket order');
+      assert.ok(s.pieces.every(p=>p.size===126),'no smaller touch targets on larger levels');
+      for(const piece of s.pieces) {
+        assert.deepEqual({x:piece.x,y:piece.y},piece.start);
+        await drag(piece,{x:250,y:150});
+        const returned=(await snapshot()).pieces.find(p=>p.id===piece.id);
+        assert.equal(returned.placed,false);
+        assert.deepEqual({x:returned.x,y:returned.y},piece.start,'wrong drop returns to assigned shuffled slot');
+      }
       // Conservative full-size boxes ensure artwork never overlaps or reaches safe edges.
       const boxes=[...s.pieces.map(p=>({x:p.x,y:p.y,size:p.size})),...s.sockets];
       for(const a of boxes) {
@@ -57,10 +75,10 @@ const EXPECTED = [
         assert.ok(a.x+a.size/2<1089||a.y+a.size/2<410,'clear of doorway');
       }
       await page.screenshot({path:path.join(__dirname,`level-${index+1}.png`)});
-      if(index===4) {
+      if([4,8,11,12,13,15].includes(index)) {
         assert.ok(s.sockets.every(t=>t.colourHint),'same-shape targets have visible colour references');
-        // Each circle must reject all three wrong-colour circle sockets.
-        for(const piece of s.pieces)for(const target of s.sockets.filter(t=>t.colour!==piece.colour)) {
+        // Repeated shapes reject every wrong-colour socket from the same family.
+        for(const piece of s.pieces)for(const target of s.sockets.filter(t=>t.shape===piece.shape&&t.colour!==piece.colour)) {
           await drag(piece,target);
           const after=(await snapshot()).pieces.find(p=>p.id===piece.id);
           assert.equal(after.placed,false,`${piece.colour} must reject ${target.colour}`);
@@ -89,12 +107,12 @@ const EXPECTED = [
       assert.equal(documentLoads,originalMainDocumentLoads,'progression never reloads the document');
       console.log(`PASS level ${index+1}: content, spacing, matching, guided exit, offline progression.`);
     }
-    const wrapped=await snapshot();assert.equal(wrapped.levelId,1);assert.equal(wrapped.currentLevelIndex,0);assert.equal(wrapped.cycle,9);
+    const wrapped=await snapshot();assert.equal(wrapped.levelId,1);assert.equal(wrapped.currentLevelIndex,0);assert.equal(wrapped.cycle,17);
     assert.deepEqual(errors,[]);
     // A fresh offline visit starts at level 1, since progression is intentionally not saved.
     await page.reload();await page.locator('canvas[data-state="ENTERING"][data-offline="ready"]').waitFor();
     await page.evaluate(async()=>{window.inspectGame=(await import('./game.js')).snapshot;});
     assert.equal((await snapshot()).levelId,1);
-    console.log('PASS: all 8 levels offline, all 12 wrong-colour circle drops rejected, level 8 wraps to 1, no page reload between levels, fresh offline start, no browser errors.');
+    console.log('PASS: all 16 levels offline, shuffled starts and wrong-drop returns, every same-shape wrong-colour drop rejected, level 16 wraps to 1, no page reload between levels, fresh offline start, no browser errors.');
   } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exit(1);});

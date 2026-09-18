@@ -28,33 +28,39 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
     await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:8});await page.mouse.up();
   };
   const tap = async (x,y) => {const p=await point(x,y);await page.mouse.click(p.x,p.y);};
+  const home = index => [initial.pieces[index].start.x, initial.pieces[index].start.y];
+  const solve = async () => {
+    const s=await snapshot();
+    for(const piece of s.pieces.filter(p=>!p.placed)) {
+      const target=s.sockets.find(t=>t.id===piece.targetId);
+      await drag([piece.x,piece.y],[target.x,target.y]);
+    }
+  };
   // Misses return home, including a drop on a different shape's socket.
-  await drag([465,490],[640,265]);await page.waitForTimeout(450);
+  await drag(home(0),[640,265]);await page.waitForTimeout(450);
   assert.equal((await snapshot()).pieces[0].placed,false);
-  assert.equal((await snapshot()).pieces[0].x,465);
+  assert.equal((await snapshot()).pieces[0].x,home(0)[0]);
   // Preserve the initial touch offset rather than centering under the pointer.
-  let p=await point(490,500);await page.mouse.move(p.x,p.y);await page.mouse.down();
-  p=await point(590,450);await page.mouse.move(p.x,p.y);
-  assert.ok(Math.abs((await snapshot()).pieces[0].x-565)<1);
+  let p=await point(home(0)[0]+25,home(0)[1]+10);await page.mouse.move(p.x,p.y);await page.mouse.down();
+  p=await point(home(0)[0]+125,home(0)[1]-40);await page.mouse.move(p.x,p.y);
+  assert.ok(Math.abs((await snapshot()).pieces[0].x-(home(0)[0]+100))<1);
   await page.mouse.up();await page.waitForTimeout(450);
   // Real browser touch events: ignore a second finger; cancel safely.
   const session = await context.newCDPSession(page);
-  const a=await point(465,490),b=await point(635,490);
+  const a=await point(...home(0)),b=await point(...home(1));
   await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...a,id:1}]});
   await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...a,id:1},{...b,id:2}]});
   assert.equal((await snapshot()).active,'circle');
   await session.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
   await page.waitForTimeout(450);
   assert.equal((await snapshot()).active,null);
-  assert.equal((await snapshot()).pieces[0].x,465);
+  assert.equal((await snapshot()).pieces[0].x,home(0)[0]);
   // Forgiving snap accepts a release 85 logical pixels from the socket centre.
-  await drag([465,490],[520,265]);await page.waitForTimeout(300);
+  await drag(home(0),[520,265]);await page.waitForTimeout(300);
   assert.equal((await snapshot()).pieces[0].x,435);
   await drag([435,265],[200,200]);
   assert.equal((await snapshot()).pieces[0].placed,true);
-  await drag([635,490],[640,265]);
-  await drag([805,490],[845,265]);
-  await drag([975,490],[1050,265]);
+  await solve();
   await waitState('COMPLETE');
   await page.waitForTimeout(350);
   await page.screenshot({path:path.join(__dirname,'complete.png')});
@@ -142,7 +148,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
   await page.setViewportSize({width:1024,height:768});
   await page.waitForFunction(()=>{const r=document.querySelector('canvas').getBoundingClientRect();return Math.abs(r.width/r.height-1.6)<.01;});
   const r=await page.locator('canvas').boundingBox();assert.ok(Math.abs(r.width/r.height-1.6)<.01);
-  const ta=await point(465,490),tb=await point(435,265);
+  const next=(await snapshot()).pieces[0];
+  const ta=await point(next.x,next.y),tb=await point(435,265);
   await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{...ta,id:1}]});
   await session.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{...tb,id:1}]});
   await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
@@ -151,7 +158,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_PATH || 'playwright');
   await context.setOffline(true);await page.reload();
   await page.evaluate(async () => {window.inspectGame=(await import('./game.js')).snapshot;});
   await waitState('PLAYING');
-  await drag([465,490],[435,265]);await drag([635,490],[640,265]);await drag([805,490],[845,265]);await drag([975,490],[1050,265]);
+  await solve();
   await waitState('COMPLETE');await waitState('GUIDE_TO_EXIT');
   await page.waitForTimeout(300);assert.equal((await snapshot()).actorX,65);
   // A near-door target also works offline, with no requirement to reach its centre.

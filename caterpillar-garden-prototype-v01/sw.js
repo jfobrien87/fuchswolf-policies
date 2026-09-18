@@ -1,4 +1,4 @@
-const CACHE = 'caterpillar-garden-v6';
+const CACHE = 'caterpillar-garden-v8';
 const ROOT = new URL('./', self.location.href).href;
 const FILES = ['./', './index.html', './styles.css', './config.js', './levels.js', './audio.js', './game.js', './assets/manifest.json'];
 self.addEventListener('install', event => event.waitUntil((async () => {

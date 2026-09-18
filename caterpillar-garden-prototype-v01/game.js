@@ -1,5 +1,5 @@
 import { CONFIG as C } from './config.js';
-import { LEVELS } from './levels.js';
+import { LEVELS, shufflePieces } from './levels.js';
 import { audio, bindSoundControl } from './audio.js';
 
 bindSoundControl(document.querySelector('#sound-toggle'));
@@ -15,6 +15,7 @@ let active = null, open = false, exitedFor = 0, previous = null, cycle = 0;
 let ready = false;
 let guidePointerId = null, guideTargetX = C.CATERPILLAR_REST_X;
 let guideMarkerFade = 0;
+let tapHappyRemaining = 0;
 const guideHeadOffset = C.CATERPILLAR_WIDTH * C.GUIDE_HEAD_OFFSET_RATIO;
 const guideMaxX = C.PORTAL.x + C.PORTAL.width / 2 - guideHeadOffset;
 const exitEndX = C.PORTAL.occlusionX + C.EXIT_CLEARANCE;
@@ -22,6 +23,7 @@ const exitEndX = C.PORTAL.occlusionX + C.EXIT_CLEARANCE;
 const easeOut = t => 1 - (1 - t) ** 3;
 const clamp = (x, min, max) => Math.min(max, Math.max(min, x));
 function setState(next) {
+  tapHappyRemaining = 0;
   state = next;
   elapsed = 0;
   canvas.dataset.state = state;
@@ -35,10 +37,12 @@ function loadLevel(index) {
     ...position(p.socket), size: (p.size ?? C.PIECE_SIZE) * C.SOCKET_SIZE / C.PIECE_SIZE,
     pieceSize: p.size ?? C.PIECE_SIZE, colourHint: level.colourHints === true,
   }));
+  const slotByPiece = new Map(shufflePieces(level.pieces).map((p, slotIndex) => [p, slotIndex]));
   pieces = level.pieces.map((p,i) => {
-    const start = position(p.start);
+    const slotIndex = slotByPiece.get(p);
+    const start = position(level.startSlots[slotIndex]);
     return { id: `${level.id}-piece-${i}`, shape: p.shape, colour: p.colour,
-      start, ...start, socket: sockets[i], targetId: sockets[i].id,
+      start, slotIndex, ...start, socket: sockets[i], targetId: sockets[i].id,
       size: p.size ?? C.PIECE_SIZE, placed: false, motion: null };
   });
   actorX = -C.CATERPILLAR_WIDTH;
@@ -149,9 +153,12 @@ function drawGuideMarker() {
 function drawActor() {
   const w=C.CATERPILLAR_WIDTH,h=w*metadata.frame_size_px.height/metadata.frame_size_px.width;
   let lift=0, stretch=1;
-  if(state===STATES.COMPLETE) {
-    const t=clamp((elapsed-C.COMPLETION_DELAY)/C.HAPPY_DURATION,0,1);
-    lift=Math.sin(Math.PI*t)*22;stretch=1+Math.sin(Math.PI*2*t)*.035;
+  if(state===STATES.COMPLETE||tapHappyRemaining>0) {
+    const completing=state===STATES.COMPLETE;
+    const t=completing ? clamp((elapsed-C.COMPLETION_DELAY)/C.HAPPY_DURATION,0,1) : 1-tapHappyRemaining/C.HAPPY_DURATION;
+    // Reuse the completion reaction, with a smaller greeting bounce.
+    lift=Math.sin(Math.PI*t)*(completing?22:10);
+    stretch=1+Math.sin(Math.PI*2*t)*(completing ? .035 : .02);
   }
   ctx.save();
   // The back of the open doorway occludes the character as it walks inside.
@@ -231,6 +238,7 @@ function update(dt) {
     else {exitedFor+=dt;if(exitedFor>=C.LEVEL_TRANSITION_DELAY)setState(STATES.TRANSITIONING);}
   } else if(state===STATES.TRANSITIONING && elapsed>=C.LEVEL_TRANSITION_DURATION)loadLevel(currentLevelIndex+1);
   if(walking) {walkTime+=dt;frame=Math.floor(walkTime/1000*(C.ANIMATION_FPS??metadata.recommended_fps))%metadata.frame_count;}
+  tapHappyRemaining=canGreetActor() ? Math.max(0,tapHappyRemaining-dt) : 0;
 }
 function tick(time) {
   if(!ready)return;
@@ -251,6 +259,19 @@ function releaseGuide(cancelled=false) {
   if(cancelled) {guideTargetX=actorX;guideMarkerFade=0;}
   if(id!==null&&canvas.hasPointerCapture(id))canvas.releasePointerCapture(id);
 }
+function canGreetActor() {
+  // END_FREEPLAY is accepted for copies that have a final scene; this does not
+  // change this edition's existing level loop or create a new ending.
+  return (state===STATES.PLAYING||state==='END_FREEPLAY') && !walking &&
+    guidePointerId===null && guideTargetX<=actorX;
+}
+function greetActor(pos) {
+  if(!canGreetActor()||active||tapHappyRemaining>0)return;
+  const width=C.CATERPILLAR_WIDTH,height=width*metadata.frame_size_px.height/metadata.frame_size_px.width;
+  if(pos.x<actorX||pos.x>actorX+width||pos.y<C.GROUND_Y-height||pos.y>C.GROUND_Y)return;
+  tapHappyRemaining=C.HAPPY_DURATION;
+  render();
+}
 function startDrag(event) {
   event.preventDefault();
   if(!ready||active||guidePointerId!==null||event.isPrimary===false||(event.pointerType==='mouse'&&event.button!==0))return;
@@ -261,13 +282,15 @@ function startDrag(event) {
     guidePointerId=event.pointerId;setGuideTarget(event);canvas.setPointerCapture(event.pointerId);render();
     return;
   }
-  if(state!==STATES.PLAYING)return;
+  if(state!==STATES.PLAYING&&state!=='END_FREEPLAY')return;
   const candidates=pieces.filter(p=>{
+    if(state!==STATES.PLAYING)return false;
     if(p.placed)return false;
     const {w,h}=fit(images.get(`${p.shape}-${p.colour}`),p.size);
     return Math.abs(pos.x-p.x)<=w/2+C.HITBOX_PADDING&&Math.abs(pos.y-p.y)<=h/2+C.HITBOX_PADDING;
   }).sort((a,b)=>Math.hypot(pos.x-a.x,pos.y-a.y)-Math.hypot(pos.x-b.x,pos.y-b.y));
-  const piece=candidates[0];if(!piece)return;
+  const piece=candidates[0];
+  if(!piece) {greetActor(pos);return;}
   piece.motion=null;
   active={piece,id:event.pointerId,offset:{x:pos.x-piece.x,y:pos.y-piece.y}};
   audio.playSfx('pickup');
@@ -308,6 +331,7 @@ canvas.addEventListener('lostpointercapture',e=>finishDrag(e,true));
 canvas.addEventListener('contextmenu',e=>e.preventDefault());
 for(const name of ['gesturestart','gesturechange','gestureend','touchmove'])document.addEventListener(name,e=>e.preventDefault(),{passive:false});
 function suspend() {
+  tapHappyRemaining=0;
   releaseGuide(true);
   if(active) {
     const {piece,id}=active;active=null;animatePiece(piece,piece.start,'return');
@@ -328,9 +352,12 @@ function validateLevels(manifest) {
   for(const level of LEVELS) {
     if(ids.has(level.id)||!level.pieces?.length)throw new Error(`Invalid level ${level.id}`);
     ids.add(level.id);
+    if(!Array.isArray(level.startSlots)||level.startSlots.length!==level.pieces.length)throw new Error(`Each piece needs a start slot in level ${level.id}`);
+    for(const pos of [...level.startSlots,...level.pieces.map(p=>p.socket)]) {
+      if(!pos||![pos.x,pos.y].every(n=>Number.isFinite(n)&&n>=0&&n<=1))throw new Error(`Invalid position in level ${level.id}`);
+    }
     for(const p of level.pieces) {
       if(!manifest.shapes[p.shape]?.[p.colour]||!manifest.shapes[p.shape]?.socket)throw new Error(`Missing artwork in level ${level.id}`);
-      for(const pos of [p.start,p.socket])if(!pos||![pos.x,pos.y].every(n=>Number.isFinite(n)&&n>=0&&n<=1))throw new Error(`Invalid position in level ${level.id}`);
       if(p.size!==undefined&&(!Number.isFinite(p.size)||p.size<=0))throw new Error(`Invalid piece size in level ${level.id}`);
     }
   }
@@ -358,10 +385,11 @@ async function boot() {
   if(!Number.isInteger(initialIndex)||initialIndex<0||initialIndex>=LEVELS.length)throw new Error('Invalid starting level');
   await audio.init(manifest.audio).catch(error=>console.warn('Audio could not initialize; gameplay can continue.',error));
   ready=true;loadLevel(initialIndex);requestAnimationFrame(tick);
+  if(C.DEBUG)window.reloadCurrentLevel=()=>{suspend();loadLevel(currentLevelIndex);};
 }
 
 // Read-only inspection for development and repeatable browser checks; no gameplay shortcuts.
 export function snapshot() {
-  return {state,cycle,currentLevelIndex,levelId:LEVELS[currentLevelIndex].id,levelCount:LEVELS.length,actorX,frame,walking,open,guideTargetX,guiding:guidePointerId!==null,guideMarker:{x:guideTargetX+guideHeadOffset,opacity:guideMarkerOpacity()},actorHidden:open&&actorX>=C.PORTAL.occlusionX,active:active?.piece.shape??null,sockets:sockets.map(s=>({...s})),pieces:pieces.map(p=>({id:p.id,shape:p.shape,colour:p.colour,targetId:p.targetId,size:p.size,x:p.x,y:p.y,placed:p.placed,animating:!!p.motion}))};
+  return {state,cycle,currentLevelIndex,levelId:LEVELS[currentLevelIndex].id,levelCount:LEVELS.length,actorX,frame,walking,open,tapHappyRemaining,guideTargetX,guiding:guidePointerId!==null,guideMarker:{x:guideTargetX+guideHeadOffset,opacity:guideMarkerOpacity()},actorHidden:open&&actorX>=C.PORTAL.occlusionX,active:active?.piece.shape??null,sockets:sockets.map(s=>({...s})),pieces:pieces.map(p=>({id:p.id,shape:p.shape,colour:p.colour,targetId:p.targetId,size:p.size,start:{...p.start},slotIndex:p.slotIndex,x:p.x,y:p.y,placed:p.placed,animating:!!p.motion}))};
 }
 boot().catch(error=>{console.error(error);document.querySelector('#load-error').hidden=false;});
