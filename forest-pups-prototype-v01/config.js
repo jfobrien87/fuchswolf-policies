@@ -1,3 +1,4 @@
+import { tangramLevel } from "./tangram.js";
 // All radii are multiples of the visible shape's radius, independent of viewport.
 export const CONFIG = Object.freeze({
   TARGET_ACQUIRE_RADIUS: 1.9,
@@ -82,9 +83,11 @@ const trayOrder = [
   "jupiter",
 ];
 export function matchesObject(object, accepts, mode) {
-  if (mode === "shape") return object.shape === accepts.shape;
+  if (mode === "shape" || mode === "shapeOnly")
+    return object.shape === accepts.shape;
   if (mode === "shapeAndColour")
     return object.shape === accepts.shape && object.colour === accepts.colour;
+  if (mode === "colourOnly") return object.colour === accepts.colour;
   return object.id === accepts.id;
 }
 const shapeColours = [
@@ -111,11 +114,13 @@ function colourLevel(number, items) {
     title: `Colour Match ${number}`,
     group: "Colours",
     matchMode: "shapeAndColour",
-    interactiveEnding: true,
+    endingMode: "interactive",
+    layoutProfile: "leftCompanion",
+    holding: { variant: "path" },
+    exitType: "genericDoor",
     radiusWidth: 0.049,
     radiusHeight: 0.079,
     socketStyle: "colouredShape",
-    portalObject: items[0][0] + "-" + items[0][1],
     objects: items.map(([shape, colour], i) => ({
       id: shape + "-" + colour,
       shape,
@@ -136,17 +141,19 @@ function colourLevel(number, items) {
     })),
   };
 }
-export const LEVEL_DEFINITIONS = [
+const definitions = [
   ...LEVELS.map((layouts, index) => ({
     id: `shapes-${index + 1}`,
     title: `Shape ${index + 1}`,
     group: "Shapes",
-    matchMode: "shape",
-    interactiveEnding: true,
+    matchMode: "shapeOnly",
+    endingMode: "interactive",
+    layoutProfile: "leftCompanion",
+    holding: { variant: "path" },
+    exitType: "genericDoor",
     radiusWidth: index === 0 ? 0.072 : 0.052,
     radiusHeight: index === 0 ? 0.115 : 0.081,
     socketStyle: "shape",
-    portalObject: TYPES[0],
     objects: layouts.map((layout, i) => ({
       id: TYPES[i],
       renderer: "shapeSprite",
@@ -183,13 +190,14 @@ export const LEVEL_DEFINITIONS = [
     title: "Solar System Order",
     group: "Space",
     matchMode: "id",
-    interactiveEnding: true,
+    endingMode: "interactive",
+    layoutProfile: "bottomCompanion",
+    holding: { variant: "path" },
+    exitType: "genericDoor",
     radiusWidth: 0.039,
     radiusHeight: 0.07,
-    companionRegion: "bottom",
     socketStyle: "neutral",
     path: true,
-    portalObject: "sun",
     completionOrder: SOLAR_ORDER,
     objects: SOLAR_ORDER.map((id, index) => {
       const tray = trayOrder.indexOf(id);
@@ -225,3 +233,92 @@ export const LEVEL_DEFINITIONS = [
     }),
   },
 ];
+
+// Pattern candidates share the missing slot; prefilled cells never enter input state.
+function patternLevel(number, shapePattern = false) {
+  const answer = shapePattern ? "square" : "circle";
+  const colour = shapePattern ? "red" : "blue";
+  const items = shapePattern
+    ? [
+        ["square", "red"],
+        ["circle", "red"],
+        ["star", "red"],
+      ]
+    : [
+        ["circle", "blue"],
+        ["circle", "yellow"],
+        ["circle", "green"],
+      ];
+  const accepts = shapePattern ? { shape: answer } : { shape: answer, colour };
+  return {
+    id: `pattern-${number}`,
+    title: `Pattern ${number}`,
+    group: "Patterns",
+    matchMode: shapePattern ? "shapeOnly" : "shapeAndColour",
+    layoutProfile: "bottomCompanion",
+    endingMode: "interactive",
+    holding: { variant: "path" },
+    exitType: "genericDoor",
+    radiusWidth: 0.057,
+    radiusHeight: 0.084,
+    socketStyle: "pattern",
+    pattern: {
+      cells: shapePattern
+        ? [["triangle", "red"], ["square", "red"], ["triangle", "red"], null]
+        : [["circle", "red"], ["circle", "blue"], ["circle", "red"], null],
+      missingIndices: [3],
+      positions: [
+        [0.16, 0.2],
+        [0.38, 0.2],
+        [0.6, 0.2],
+        [0.82, 0.2],
+      ],
+    },
+    objects: items.map(([shape, colour], i) => ({
+      id: `${shape}-${colour}`,
+      shape,
+      colour,
+      renderer: "shapeSprite",
+      sprite: `shape_${shape}_${colour}`,
+      visualScale: 1,
+      touchMultiplier: 1,
+      minimumTouchScale: 0,
+      acquireMultiplier: 1,
+      releaseMultiplier: 1,
+      home: [
+        [0.5, 0.49],
+        [0.22, 0.49],
+        [0.78, 0.49],
+      ][i],
+      destination: { id: "missing-3", position: [0.82, 0.2], accepts },
+    })),
+  };
+}
+const colourSort = colourLevel(3, [
+  ["diamond", "red"],
+  ["heart", "blue"],
+  ["star", "yellow"],
+  ["triangle", "green"],
+]);
+colourSort.id = "colour-sort";
+colourSort.title = "Colour Sort";
+colourSort.matchMode = "colourOnly";
+for (const object of colourSort.objects)
+  object.destination.accepts = { shape: "circle", colour: object.colour };
+// Keep existing content order stable; insert new activities before the final Space activity.
+export const LEVEL_DEFINITIONS = [
+  ...definitions.slice(0, -1),
+  colourSort,
+  patternLevel(1),
+  patternLevel(2, true),
+  tangramLevel("boat", "Tangram Boat"),
+  tangramLevel("house", "Tangram House"),
+  definitions.at(-1),
+].map((level) => ({
+  luckyDipEligible: true,
+  ...level,
+  randomizeStartPositions: level.randomizeStartPositions ?? !["shapes-1", "solar-system-order"].includes(
+    level.id,
+  ),
+  spawnSlots: level.spawnSlots || level.objects.map((object) => [...object.home]),
+}));

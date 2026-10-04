@@ -29,3 +29,18 @@ The game preserves crop aspect ratios. Source crops exceed the displayed pixel r
 ## Prototype 01.2 shape sheet
 
 `assets/shapes.png` is an unmodified copy of `simple_shapes_puzzle_elements_spritesheet.png` (1225×1284). `shape-sprites.js` maps 6 rows × 5 columns to 24 coloured sprites and 6 recessed targets. Runtime cropping retains edge margins and source pixels; multiply compositing suppresses the white surround. No image generation, recolouring or procedural replacement is used for these puzzle assets. All 30 crops can be reviewed at `tests/shape-art.html`.
+
+
+## Prototype 04 tangram sheets
+
+`assets/boat-tangram.png` is the unmodified supplied “Colorful Boat Puzzle Pieces and Board.png”; `assets/house-tangram.png` is the unmodified supplied “Colorful House Puzzle Pieces.png”. Runtime crop rectangles, board-local slot bounds and rotations are in `tangram.js`. No new image generation or procedural shape replacement is used. Proportional fitting preserves pixels/aspect ratios but cannot reconcile the source piece/recess geometry discrepancies. See `UPDATE-04.md`, especially the blue Boat hull and House chimney limitations.
+
+
+## Prototype 04.1 canonical tangrams (supersedes the Prototype 04 fit limitation)
+
+Six new PNGs retain the supplied filenames and are byte-identical copies in assets/. Empty boards are the runtime boards; loose sheets supply every draggable pixel; solved images supply placement/orientation correspondence. The House empty/solved images have different framing, so each solved outline is registered to the corresponding empty-board socket. Source polygons and registered socket polygons are explicit native coordinates in tangram.js.
+
+The renderer prepares and caches a fitted sprite once per piece using affine triangles, correcting outline/proportion discrepancies between the separate illustrations. This is not a rigid, aspect-preserving crop: the loose artwork is fitted to the socket geometry. After preparation, gameplay only translates/scales the static sprite. All ten pieces are pre-oriented. No solved-image crops, replacement art, generated textures or remote assets are used. Source-over compositing preserves the supplied colours over the wooden board.
+
+## Prototype 05 music
+assets/forest-exploration.mp3 is a byte-identical local copy of the user-supplied “ES_Forest Exploration - Sight of Wonders.mp3”. It is cached locally; there is no streaming service or remote dependency. The app prepares a three-second tail/head crossfade in decoded memory without overwriting the source. Distribution rights are those of the supplied recording, not a new license supplied by this prototype.

@@ -19,7 +19,7 @@ document.querySelector("#run").onclick = async () => {
       matchesObject(
         { shape: "circle", colour: "red" },
         { shape: "circle", colour: "blue" },
-        "shape",
+        "shapeOnly",
       ),
       "shape mode ignores colour",
     );
@@ -140,19 +140,19 @@ document.querySelector("#run").onclick = async () => {
         for (let i = 0; i < v.state.pieces.length; i++) {
           const p = v.state.pieces[i];
           assert(
-            v.state.level === 6
+            v.state.definition.layoutProfile === "bottomCompanion"
               ? p.home.y + v.hitRadii[i] < v.wolfBounds.top
               : p.home.x - v.hitRadii[i] > v.wolfBounds.right,
-            "Wolf/source separation",
+            `Wolf/source separation: ${v.state.definition.id} ${p.type} y=${p.home.y} hit=${v.hitRadii[i]} wolfTop=${v.wolfBounds.top}`,
           );
           assert(
-            v.state.level === 6
+            v.state.definition.layoutProfile === "bottomCompanion"
               ? p.target.y + p.radius < v.wolfBounds.top
               : p.target.x - p.radius > v.wolfBounds.right,
             "Wolf/target separation",
           );
         }
-        if (v.state.level === 6) {
+        if (v.state.definition.id === "solar-system-order") {
           assert(
             v.state.pieces.map((p) => p.type).join(",") ===
               "sun,mercury,venus,earth,mars,jupiter,saturn,uranus,neptune",
@@ -247,12 +247,12 @@ document.querySelector("#run").onclick = async () => {
       );
       assert(end.reacquisitions === 2, "exported reacquisitions");
       await until(() => S().state.phase === "portal", "first portal");
-      for (let level = 0; level < 7; level++) {
+      for (let level = 0; level < 12; level++) {
         s = S();
         geometry();
         assert(s.state.level === level, "level sequence");
         if (level > 0) {
-          if (level === 1 || level === 4 || level === 5 || level === 6) {
+          if (level === 1 || level === 4 || level === 5 || level === 11) {
             p = s.state.pieces[0];
             const wrong = s.state.targets[1];
             pointer("pointerdown", p.x, p.y);
@@ -279,7 +279,7 @@ document.querySelector("#run").onclick = async () => {
             S().events.some((e) => e.type === "wolf_tapped"),
             "Wolf tap hook logged",
           );
-          if (level === 6) {
+          if (level === 11) {
             for (const piece of s.state.pieces) {
               pointer(
                 "pointerdown",
@@ -294,11 +294,41 @@ document.querySelector("#run").onclick = async () => {
               await sleep(350);
             }
           }
-          for (const piece of s.state.pieces) {
+          if (s.state.definition.pattern) {
+            const wrongPiece = s.state.pieces[1];
+            pointer("pointerdown", wrongPiece.x, wrongPiece.y);
+            pointer(
+              "pointermove",
+              wrongPiece.target.x,
+              wrongPiece.target.y + 16,
+            );
+            assert(!S().drag.lock, "pattern distractor rejected");
+            pointer("pointerup", wrongPiece.target.x, wrongPiece.target.y + 16);
+            await sleep(350);
+          }
+          for (const piece of s.state.pieces.filter((p) =>
+            matchesObject(
+              p.definition,
+              p.target.accepts,
+              s.state.definition.matchMode,
+            ),
+          )) {
             pointer("pointerdown", piece.home.x, piece.home.y);
             assert(S().drag?.piece.type === piece.type, "correct piece pickup");
             pointer("pointermove", piece.target.x, piece.target.y + 16);
-            pointer("pointerup", piece.target.x, piece.target.y + 16);
+            if (s.state.definition.pattern) {
+              pointer(
+                "pointermove",
+                piece.target.x - s.R * 2.7,
+                piece.target.y + 16,
+              );
+              assert(S().drag.lock, "pattern wobble retains target");
+            }
+            pointer(
+              "pointerup",
+              piece.target.x - s.R * (s.state.definition.pattern ? 2.8 : 0),
+              piece.target.y + 16,
+            );
           }
           await until(() => S().state.phase === "portal", "portal " + level);
         }
@@ -306,10 +336,18 @@ document.querySelector("#run").onclick = async () => {
         pointer("pointerdown", s.state.wolf.x * s.W, s.state.wolf.y * s.H);
         pointer("pointermove", s.state.portal.x, s.state.portal.y);
         assert(S().drag.lock, "portal lock");
+        assert(
+          !s.state.targets.some((t) => t.id === s.state.portal.id),
+          "exit independent of puzzle targets",
+        );
+        assert(
+          s.shell.phase === "wolfLocomotionUnlocked",
+          "interactive shell state",
+        );
         pointer("pointerup", s.state.portal.x - 5, s.state.portal.y + 7);
         await until(
           () =>
-            level === 6
+            level === 11
               ? S().state.phase === "final"
               : S().state.level === level + 1 && S().state.phase === "puzzle",
           "transition",
@@ -330,18 +368,18 @@ document.querySelector("#run").onclick = async () => {
         "final event",
       );
       assert(
-        s.events.filter((e) => e.type === "portal_interaction").length === 7,
+        s.events.filter((e) => e.type === "portal_interaction").length === 12,
         "seven portals",
       );
       assert(
-        s.events.filter((e) => e.type === "correct_match").length === 27,
+        s.events.filter((e) => e.type === "correct_match").length === 43,
         "twenty-seven matches",
       );
       win.ForestPups.openDebug();
       const raw = JSON.parse(doc.querySelector("#raw").value);
       assert(
-        raw.prototype === "Forest Pups 01.2" &&
-          raw.levelDefinitions.length === 7,
+        raw.prototype === "Forest Pups 05" &&
+          raw.levelDefinitions.length === 12,
         "raw telemetry schema",
       );
       let exported = null;
@@ -357,12 +395,11 @@ document.querySelector("#run").onclick = async () => {
         "JSON export",
       );
       assert(
-        doc.querySelectorAll("#level-picker option").length === 7,
+        doc.querySelectorAll("#level-picker [data-level]").length === 12,
         "all activities in picker",
       );
-      for (let i = 0; i < 7; i++) {
-        doc.querySelector("#level-picker").value = String(i);
-        doc.querySelector("#jump-level").click();
+      for (let i = 0; i < 12; i++) {
+        doc.querySelector(`[data-level="${i}"]`).click();
         assert(
           S().state.level === i && S().state.phase === "puzzle",
           "picker jump " + i,
@@ -383,7 +420,7 @@ document.querySelector("#run").onclick = async () => {
         `Frame intervals ${size.width}px: median ${Math.round(frameTimes[Math.floor(frameTimes.length * 0.5)])}ms, p95 ${Math.round(frameTimes[Math.floor(frameTimes.length * 0.95)])}ms${loadTimer ? " with 20ms main-thread stalls every 70ms" : ""}`,
       );
       results.push(
-        `PASS ${size.width} × ${size.height}: padded pickup, extra fingers, cancellation, repeated taps, empty/wrong release, acquire/cancel, release wobble, all 27 matches, 7 portals, final reunion, replay, telemetry reset`,
+        `PASS ${size.width} × ${size.height}: padded pickup, extra fingers, cancellation, repeated taps, empty/wrong release, acquire/cancel, release wobble, all 43 matches, 12 exits, final reunion, replay, telemetry reset`,
       );
       result.textContent = results.join("\n");
     }

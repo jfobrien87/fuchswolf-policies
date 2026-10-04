@@ -1,0 +1,137 @@
+<!doctype html><meta charset="utf-8" /><title>Level shell regression</title
+><button id="run">Test shell and passive endings</button>
+<pre id="result">Ready</pre>
+<iframe
+  src="../index.html?test=1"
+  style="width: 1180px; height: 820px; border: 0"
+></iframe>
+<script type="module">
+  import { createEvents, createLevelShell, layoutFor } from "../level-shell.js";
+  import { LEVEL_DEFINITIONS } from "../config.js";
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+    out = document.querySelector("#result");
+  const assert = (v, m) => {
+    if (!v) throw Error(m);
+  };
+  async function until(f, m) {
+    const t = performance.now();
+    while (!f()) {
+      if (performance.now() - t > 6000) throw Error("Timeout " + m);
+      await sleep(40);
+    }
+  }
+  document.querySelector("#run").onclick = async () => {
+    try {
+      const bus = createEvents(),
+        model = createLevelShell(bus),
+        trace = [];
+      for (const name of [
+        "puzzleProgress",
+        "puzzleCompleted",
+        "exitActivated",
+        "wolfLocomotionUnlocked",
+        "endingStarted",
+        "levelCompleted",
+      ])
+        bus.on(name, () => trace.push(name));
+      model.start(LEVEL_DEFINITIONS[0], { endingMode: "passive" });
+      model.progress(1, 1);
+      assert(model.state.phase === "puzzleComplete", "completion phase");
+      model.activateExit();
+      model.activateExit();
+      model.finish();
+      model.finish();
+      assert(
+        trace.join(",") ===
+          "puzzleProgress,puzzleCompleted,exitActivated,endingStarted,levelCompleted",
+        "once-only ordered passive hooks",
+      );
+      assert(model.state.barrierOpen, "barrier opens");
+      const w = document.querySelector("iframe").contentWindow,
+        d = w.document,
+        c = d.querySelector("canvas"),
+        S = () => w.ForestPups.snapshot();
+      const pointer = (type, x, y) => {
+        const r = c.getBoundingClientRect();
+        c.dispatchEvent(
+          new w.PointerEvent(type, {
+            pointerId: 1,
+            pointerType: "touch",
+            clientX: x + r.left,
+            clientY: y + r.top,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      };
+      for (let i = 0; i < 12; i++) {
+        w.ForestPups.openDebug();
+        d.querySelector("#ending-mode").value = "passive";
+        d.querySelector(`[data-level="${i}"]`).click();
+        d.querySelector("#close").click();
+        let s = S();
+        assert(
+          !s.drag && !s.state.portal && s.shell.phase === "puzzleActive",
+          "clean parent jump",
+        );
+        const zone = layoutFor(s.state.definition).wolfZone,
+          e = s.shell.exit.position;
+        assert(
+          e.x >= zone.x &&
+            e.x <= zone.x + zone.w &&
+            e.y >= zone.y &&
+            e.y <= zone.y + zone.h,
+          "separate exit zone",
+        );
+        for (const p of s.state.pieces) {
+          if(S().state.phase!=="puzzle") break;
+          pointer("pointerdown", p.x, p.y);
+          pointer("pointermove", p.target.x, p.target.y + 16);
+          pointer("pointerup", p.target.x, p.target.y + 16);
+        }
+        await until(() => S().state.phase === "travel", "passive starts");
+        assert(S().shell.phase === "levelEnding", "passive state");
+        assert(
+          !S()
+            .events.slice(-8)
+            .some((e) => e.type === "wolf_locomotion_unlocked"),
+          "no drag unlock in passive",
+        );
+        await until(
+          () =>
+            i === 11 ? S().state.phase === "final" : S().state.level === i + 1,
+          "passive transition",
+        );
+        const jumps = S().events.filter((e) => e.type === "parent_level_jump");
+        assert(
+          jumps.at(-1).targetLevelId === LEVEL_DEFINITIONS[i].id,
+          "named jump telemetry",
+        );
+        out.textContent = `PASS passive ending ${i + 1}/12`;
+      }
+      // Jump away during travel; obsolete transition must not advance the new activity.
+      w.ForestPups.openDebug();
+      d.querySelector('[data-level="0"]').click();
+      d.querySelector("#close").click();
+      let s = S(),
+        p = s.state.pieces[0];
+      pointer("pointerdown", p.x, p.y);
+      pointer("pointermove", p.target.x, p.target.y + 16);
+      pointer("pointerup", p.target.x, p.target.y + 16);
+      await until(() => S().state.phase === "travel", "travel before jump");
+      w.ForestPups.openDebug();
+      d.querySelector("#ending-mode").value = "level";
+      d.querySelector('[data-level="4"]').click();
+      d.querySelector("#close").click();
+      await sleep(3000);
+      assert(
+        S().state.level === 4 && S().state.phase === "puzzle",
+        "old ending cannot advance jumped level",
+      );
+      out.textContent =
+        "PASS shell event order/idempotence, both layout exit zones, twelve passive endings, named jump telemetry, safe jump during travel; interactive endings covered by main suite";
+    } catch (e) {
+      out.textContent = "FAIL " + e.stack;
+    }
+  };
+</script>

@@ -1,0 +1,38 @@
+// Shared by the page and classic service worker; all paths remain subfolder-relative.
+self.ForestPupsCache = Object.freeze({
+  version: "forest-pups-p05-v2",
+  nameFor(base) {
+    return this.version + "-" + encodeURIComponent(new URL(base).pathname);
+  },
+  files: [
+    "./",
+    "./index.html",
+    "./style.css",
+    "./config.js",
+    "./game.js",
+    "./audio.js",
+    "./spawn.js",
+    "./assets/forest-exploration.mp3",
+    "./level-shell.js",
+    "./play-order.js",
+    "./tangram.js",
+    "./assets/boat_tangram_pieces.png",
+    "./assets/boat_tangram_empty_board.png",
+    "./assets/boat_tangram_solved.png",
+    "./assets/house_tangram_pieces.png",
+    "./assets/house_tangram_board.png",
+    "./assets/house_tangram_solved.png",
+    "./shell-view.js",
+    "./offline.js",
+    "./runtime-cache.js",
+    "./solar-sprites.js",
+    "./shape-sprites.js",
+    "./manifest.webmanifest",
+    "./assets/shapes.png",
+    "./assets/wolf-poses.png",
+    "./assets/fox.png",
+    "./assets/solar-system.png",
+    "./assets/icon.svg",
+    "./assets/icon.png",
+  ],
+});

@@ -1,8 +1,8 @@
-# Forest Pups — Preschool Interaction Prototype 01.2
+# Forest Pups — Preschool Interaction Prototype 05
 
-A complete, dependency-free static game for testing drag → match → release with a 2½-year-old. Four deterministic shape levels, two colour activities and a Solar System ordering level lead through Wolf's ghost-destination portal interaction to a Wolf-and-Fox friendship vignette. No accounts, external services, analytics requests, menus in normal play, scores or spoken instructions.
+A complete, dependency-free static game for testing drag → match → release with a 2½-year-old. Four shape levels, three colour activities, two pattern activities, two tangrams and a Solar System ordering level lead through Wolf's ghost-destination exit interaction to a Wolf-and-Fox friendship vignette. No accounts, external services, analytics requests, menus in normal play, scores or spoken instructions.
 
-**Prototype 01.2 includes supplied shape and Solar System artwork, two colour activities, visible utility controls and an adult activity picker.** See `UPDATE-01.2.md`.
+**Prototype 05 adds local looping music, seeded safe-slot shuffles, all twelve levels in Lucky Dip, and travel diagnostics.** See `UPDATE-05.md` for architecture and the exact iPad offline checklist. Canonical tangram fit from 04.1 is preserved.
 
 ## Run locally
 
@@ -47,7 +47,10 @@ The panel provides:
 - **Restart Level 1**, preserving history with a restart event.
 - **Reset telemetry**, clearing history and starting a new session at Level 1.
 - Independent overlays for hitboxes, acquisition zones, cancellation zones and the retained destination, plus mute.
-- A grouped activity picker for Shapes, Colours and Space.
+- Direct level-name buttons grouped under Shapes, Colours, Patterns, Tangrams and Space. Tap a name, then **Back to play**. Jumps preserve history and log `parent_level_jump` with the target level ID.
+- **Lucky Dip** shuffles eligible activities and continues across bags without immediate repeats. **Replay current level** preserves its order; direct level selection or Restart Level 1 leaves Lucky Dip.
+- An ending-mode override for the next direct jump: use the level default, interactive ghost drag, or passive travel. It applies to that jump only; normal progression uses each next level’s configured mode.
+- **Offline / travel readiness**: registration, expected/active cache version, complete-cache readiness, audio state, current level, layout and ending mode.
 
 The top-left speaker is always available: tap to unlock sound, then tap to mute/unmute. Utility buttons are outside the puzzle canvas and ignore secondary touches during a drag.
 
@@ -59,7 +62,7 @@ History retains the latest 15,000 events. A drag path is sampled at most every 5
 
 ## Matching and tuning
 
-`config.js` contains the named constants and all deterministic level positions.
+`config.js` contains the named constants and safe level positions (all families except Shape 1 and Solar shuffle piece assignments).
 
 | Setting | Default | Meaning |
 | --- | ---: | --- |
@@ -78,7 +81,7 @@ History retains the latest 15,000 events. A drag path is sampled at most every 5
 
 Acquisition uses the logical piece center, with the original touch offset preserved and a small upward lift. Rendering attraction is separate. A compatible target locks on entry and supplies a correctly seated translucent preview. It remains locked outside the acquisition zone, until the larger cancellation radius is crossed. Entering another compatible target transfers the lock. **Pointer-up consumes the retained state directly; it does not retest final collision geometry.** Pointer cancellation always returns the piece, even if a target was locked.
 
-Each object has one compatible destination. Solar objects use the same base acquisition radius regardless of visual scale; incompatible neighbouring sockets cannot compete for a lock. The pure targeting test checks compatible-target switching with a separate two-target fixture.
+Ordinary activities have one destination per object; pattern candidates share a missing-position target, with distractors intentionally incompatible. Completion counts occupied targets. Solar objects use the same base acquisition radius regardless of visual scale; incompatible neighbouring sockets cannot compete for a lock. The pure targeting test checks compatible-target switching with a separate two-target fixture.
 
 Wolf’s pickup envelope is 1.4× his idle footprint, clipped to the protected region during puzzles. Solar objects share a minimum touch footprint, so Mercury remains easy to acquire.
 
@@ -89,7 +92,8 @@ Wolf’s pickup envelope is 1.4× his idle footprint, clipped to the protected r
 - The play surface prevents scrolling, selection, context menus and browser image dragging.
 - Wolf stays in a protected left region for Shapes/Colours and the bottom third for Solar. During puzzles he is tappable but cannot be dragged; taps trigger a reusable happy-reaction hook.
 - After completion, the real Wolf remains in place during a ghost drag. A valid portal release starts the transition.
-- Only after all pieces are locked may Wolf cross puzzle space to enter a portal. The completed circle (or Sun in Level 5) becomes a softly glowing circular passage. Portal placement also uses hysteresis.
+- A separate small doorway activates after completion. Completed pieces stay visible; none becomes the exit. Its location comes from the shared layout profile. Exit placement uses the existing Wolf hysteresis.
+- A simple path boundary marks Wolf’s protected area and opens at completion. It is a replaceable placeholder presentation. Interactive endings unlock ghost dragging; passive endings automatically tween Wolf to the exit.
 - Hints begin with a brief curious pose after 6.5 seconds, then one gentle piece bob after 15 seconds. Portal hints use a few quiet destination dots, without auto-completing the interaction.
 
 ## Implementation and deliberate compromises
@@ -98,14 +102,14 @@ Wolf’s pickup envelope is 1.4× his idle footprint, clipped to the protected r
 - Wolf uses rectangular sprite regions of the **supplied pose sheet**, without a redesign. A multiply blend lets its white source background sit on the warm-white canvas. Curious/playful poses use simple sprite swaps; there is no rig, locomotion or procedural animation. The pose variants have slightly different silhouettes.
 - Fox is an AI-extracted transparent sprite based on the book's Fox illustration. The final scene uses two static sprites and brief tweens; tapping either pup repeats the happy bounce and soft chime.
 - Shapes and recesses use native-resolution crops of the supplied shape sheet. Shape levels match silhouette only; colour levels use a strong supplied colour overlay on the recess and match shape plus colour.
-- Audio is a small set of quiet synthesized tones, rather than recorded Wolf vocalisations. It unlocks on the first touch; no network audio is loaded.
+- SFX are quiet synthesized tones, including the temporary Wolf cue. The supplied local music is cached and crossfaded for looping. Both unlock on a user gesture; no remote audio service is used.
 - Wolf ghost dragging is available only for configured completion portals, after puzzle objects are locked.
 - The game responds to portrait dimensions, but the study is designed for landscape. It has no rotate-device instruction or screen-orientation enforcement.
-- Progress is not resumed after reload; telemetry is retained. This keeps repeat trials deterministic.
+- Progress is not resumed after reload; telemetry is retained. Use parent seed replay to reproduce an arrangement.
 
 ## Offline updates
 
-`sw.js` precaches every runtime file and uses cache-first reads. Bump the `CACHE` version after changing runtime files. Reopen online and reload after the new service worker activates to use the new version. Close stale game tabs before a new study session. Do not change the cache version during a child's trial. A failed new precache leaves the previous complete cache intact.
+`runtime-cache.js` owns the runtime file list and version `forest-pups-p05-v2`; `sw.js` precaches that list and uses cache-first reads. Bump this version after changing runtime files. Cache names include the application subfolder, so installations on the same origin stay separate. Reopen online and reload after the new service worker activates to use the new version. Close stale game tabs before a new study session. Do not change the cache version during a child's trial. A failed new precache leaves the previous active worker and complete cache intact. Old scope-specific versioned Forest Pups caches are removed on activation. Legacy globally named p01 caches are left alone because they may belong to another installation on the same origin.
 
 Offline support requires a secure origin (HTTPS or localhost). Operating-system storage eviction, private browsing, restricted storage and removal of site data can remove cached files. Always verify offline operation in the actual installed context before relying on it.
 
@@ -128,8 +132,15 @@ Begin without an explanation, record any adult assistance, and do not demonstrat
 ## Files
 
 - `index.html`, `style.css`: full-screen play surface and hidden adult tools.
-- `game.js`: input ownership, game phases, rendering, audio and local telemetry.
-- `config.js`: tolerances, level layouts and pure hysteresis rule.
+- `game.js`: input ownership, game phases, rendering and local telemetry.
+- `config.js`: tolerances, level definitions and pure hysteresis rule.
+- `audio.js`: persistent music/SFX buses, gesture unlock, looping and lifecycle recovery.
+- `spawn.js`: seeded safe-slot permutations and repeat avoidance.
+- `tangram.js`: canonical source/socket registration, static sprite preparation, shuffled tray slots, board layout and tangram rendering.
+- `play-order.js`: Lucky Dip selection and shuffled-session state.
+- `level-shell.js`: shared layout profiles, lifecycle and small event bus.
+- `shell-view.js`: replaceable holding-boundary and exit renderers.
+- `offline.js`, `runtime-cache.js`: readiness check and shared runtime cache specification.
 - `shape-sprites.js`: all 24 coloured pieces and six neutral shape recesses.
 - `solar-sprites.js`: supplied sheet URL, native-resolution crop rectangles and ring-safe clipping metadata.
 - `assets/`: supplied Wolf sheet, derived Fox sprite and app icons.
@@ -140,3 +151,7 @@ Begin without an explanation, record any adult assistance, and do not demonstrat
 ## Solar layout and audio
 
 The Solar activity uses a full-width ordering strip, two rows of larger planets, and Wolf's protected bottom third. Levels 1–4 retain their existing layout. If sound is silent, hold the parent hotspot and press **Enable / test sound**. This unmutes the game and retries browser audio activation. Also check device volume and output route. Reopen online after replacing the deployed files so the updated service worker can activate.
+
+
+## Prototype 05 travel controls
+The supplied local music loops after the first audio-unlocking gesture and keeps its playhead across levels. Master mute affects both music and SFX. Parent tools add independent volume sliders, current spawn seed, same-seed replay and a seed entry field. Lucky Dip now includes calibrated Boat and House. Shape 1 and Solar retain fixed arrangements; other families shuffle pieces among authored slots. See UPDATE-05.md before travel.

@@ -1,0 +1,167 @@
+<!doctype html><meta charset="utf-8" /><title>
+  Content and Lucky Dip checks
+</title>
+<button id="run">Run content checks</button
+><button id="pattern">Preview Pattern 1</button
+><button id="pattern2">Preview Pattern 2</button>
+<pre id="result">Ready</pre>
+<iframe
+  src="../index.html?test=1"
+  style="width: 1180px; height: 820px; border: 0"
+></iframe>
+<script type="module">
+  import { LEVEL_DEFINITIONS, matchesObject } from "../config.js";
+  import { createPlayOrder } from "../play-order.js";
+  import { SHAPE_SPRITES } from "../shape-sprites.js";
+  const f = document.querySelector("iframe"),
+    out = document.querySelector("#result"),
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const assert = (v, m) => {
+    if (!v) throw Error(m);
+  };
+  async function until(fn, m) {
+    const start = performance.now();
+    while (!fn()) {
+      if (performance.now() - start > 7000) throw Error("Timeout " + m);
+      await sleep(40);
+    }
+  }
+  const S = () => f.contentWindow.ForestPups.snapshot();
+  function jump(index) {
+    const w = f.contentWindow;
+    w.ForestPups.openDebug();
+    w.document.querySelector(`[data-level="${index}"]`).click();
+    w.document.querySelector("#close").click();
+  }
+  document.querySelector("#pattern").onclick = async () => {
+    await until(() => S().state.phase !== "loading", "loaded preview");
+    jump(7);
+    out.textContent = "Preview: " + S().state.definition.title;
+  };
+  document.querySelector("#pattern2").onclick = async () => {
+    await until(() => S().state.phase !== "loading", "loaded preview");
+    jump(8);
+    out.textContent = "Preview: " + S().state.definition.title;
+  };
+  document.querySelector("#run").onclick = async () => {
+    try {
+      assert(Object.keys(SHAPE_SPRITES).length === 30, "30 canonical sprites");
+      assert(
+        LEVEL_DEFINITIONS[8].pattern.cells[0][0] === "triangle" &&
+          LEVEL_DEFINITIONS[8].objects[0].shape === "square" &&
+          LEVEL_DEFINITIONS[8].matchMode === "shapeOnly",
+        "shape pattern content",
+      );
+      assert(
+        matchesObject(
+          { shape: "star", colour: "blue" },
+          { shape: "circle", colour: "blue" },
+          "colourOnly",
+        ),
+        "colour ignores shape",
+      );
+      assert(
+        !matchesObject(
+          { shape: "circle", colour: "red" },
+          { shape: "circle", colour: "blue" },
+          "colourOnly",
+        ),
+        "colour rejects red",
+      );
+      const levels = [
+        ...LEVEL_DEFINITIONS,
+        { id: "debug", luckyDipEligible: true, debugOnly: true },
+        { id: "not-eligible" },
+      ];
+      const eligibleCount = LEVEL_DEFINITIONS.filter(
+        (l) => l.luckyDipEligible,
+      ).length;
+      const order = createPlayOrder(levels, () => 0.37);
+      let previous = order.start();
+      let seen = new Set([previous]);
+      for (let i = 1; i < eligibleCount * 3; i++) {
+        const next = order.next();
+        assert(next !== previous, "no immediate repeats");
+        assert(
+          next < LEVEL_DEFINITIONS.length &&
+            LEVEL_DEFINITIONS[next].luckyDipEligible,
+          "no debug content",
+        );
+        if (i % eligibleCount === 0) {
+          assert(seen.size === eligibleCount, "bag visits each once");
+          seen.clear();
+        }
+        seen.add(next);
+        previous = next;
+      }
+      const w = f.contentWindow,
+        d = w.document,
+        c = d.querySelector("canvas");
+      const pointer = (type, x, y) => {
+        const b = c.getBoundingClientRect();
+        c.dispatchEvent(
+          new w.PointerEvent(type, {
+            pointerId: 1,
+            pointerType: "touch",
+            clientX: x + b.left,
+            clientY: y + b.top,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      };
+      w.ForestPups.openDebug();
+      d.querySelector("#lucky-dip").click();
+      d.querySelector("#close").click();
+      let initial = S();
+      w.ForestPups.openDebug();
+      d.querySelector("#replay-current").click();
+      d.querySelector("#close").click();
+      assert(
+        JSON.stringify(S().playOrder) === JSON.stringify(initial.playOrder),
+        "replay retains bag/cursor",
+      );
+      const visited = [];
+      for (let i = 0; i <= eligibleCount; i++) {
+        const s = S();
+        visited.push(s.state.definition.id);
+        for (const p of s.state.pieces.filter((p) =>
+          matchesObject(
+            p.definition,
+            p.target.accepts,
+            s.state.definition.matchMode,
+          ),
+        )) {
+          pointer("pointerdown", p.x, p.y);
+          pointer("pointermove", p.target.x, p.target.y + 16);
+          pointer("pointerup", p.target.x, p.target.y + 16);
+        }
+        await until(() => S().state.phase === "portal", "lucky exit");
+        const v = S();
+        pointer("pointerdown", v.state.wolf.x * v.W, v.state.wolf.y * v.H);
+        pointer("pointermove", v.state.portal.x, v.state.portal.y);
+        pointer("pointerup", v.state.portal.x, v.state.portal.y);
+        await until(
+          () =>
+            S().state.phase === "puzzle" && S().state.level !== s.state.level,
+          "lucky progression",
+        );
+        out.textContent = `PASS Lucky Dip activity ${i + 1}/${eligibleCount + 1}`;
+      }
+      assert(
+        new Set(visited.slice(0, eligibleCount)).size === eligibleCount,
+        "all eligible in first bag",
+      );
+      assert(
+        visited[eligibleCount - 1] !== visited[eligibleCount],
+        "cycle boundary no repeat",
+      );
+      jump(7);
+      assert(!S().playOrder.active, "direct jump exits random mode");
+      out.textContent =
+        "PASS 30 canonical sprites; colourOnly metadata; shuffle coverage/debug exclusion; 13 real Lucky Dip endings including reshuffle; replay retains order; direct jump exits Lucky Dip";
+    } catch (e) {
+      out.textContent = "FAIL " + e.stack;
+    }
+  };
+</script>

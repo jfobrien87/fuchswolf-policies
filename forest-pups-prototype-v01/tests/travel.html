@@ -1,0 +1,70 @@
+<!doctype html><meta charset="utf-8"><title>Travel readiness checks</title>
+<button id="run">Run travel checks with audio</button><pre id="result">Ready — loads the real local music; final loop check takes about two minutes.</pre>
+<iframe src="../index.html?test=1" style="width:1180px;height:820px;border:0"></iframe>
+<script type="module">
+import {LEVEL_DEFINITIONS} from '../config.js';
+const f=document.querySelector('iframe'),out=document.querySelector('#result'),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const assert=(v,m)=>{if(!v)throw Error(m)};
+async function until(fn,m,timeout=15000){const t=performance.now();while(!fn()){if(performance.now()-t>timeout)throw Error('Timeout '+m);await sleep(50);}}
+const S=()=>f.contentWindow.ForestPups.snapshot();
+document.querySelector('#run').onclick=async()=>{
+ try{
+  const w=f.contentWindow,d=w.document;
+  w.ForestPups.openDebug();d.querySelector('#test-sound').click();
+  await until(()=>S().audio.musicPlaying,'real track decoded and playing');
+  const initial=S().audio;
+  assert(initial.musicVolume===.28&&initial.sfxVolume===.9,'default mix');
+  const started=performance.now();
+  out.textContent='PASS music unlocked/decoded; validating seeds and every level family…';
+  for(const [width,height] of [[1180,820],[900,600],[768,1024]]){
+   f.style.width=width+'px';f.style.height=height+'px';await sleep(80);
+   for(let index=0;index<12;index++){
+    d.querySelector('[data-level="'+index+'"]').click();
+    const def=LEVEL_DEFINITIONS[index];
+    for(let seed=0;seed<20;seed++){
+     d.querySelector('#random-seed').value=String(seed);d.querySelector('#apply-seed').click();
+     const s=S(),signature=JSON.stringify(s.state.pieces.map(p=>p.home));
+     assert(s.state.spawnRandomized===def.randomizeStartPositions,'appropriate randomization '+def.id);
+     assert(!s.events.some(e=>e.type==='spawn_layout'&&e.fallback),'no unsafe fallback');
+     assert(new Set(s.state.trayOrder).size===s.state.pieces.length,'unique slots');
+     s.state.pieces.forEach((p,i)=>{
+      const hx=p.metrics?p.metrics.width/2:p.radius,hy=p.metrics?p.metrics.height/2:p.radius;
+      assert(p.home.x-hx>=0&&p.home.x+hx<=s.W&&p.home.y-hy>=0&&p.home.y+hy<=s.H,'in viewport');
+      assert(def.layoutProfile==='bottomCompanion'?p.home.y+s.hitRadii[i]<s.wolfBounds.top:p.home.x-s.hitRadii[i]>s.wolfBounds.right,'Wolf hit area separate '+def.id);
+      for(const q of s.state.pieces.slice(0,i)){
+       const qx=q.metrics?q.metrics.width/2:q.radius,qy=q.metrics?q.metrics.height/2:q.radius;
+       assert(Math.abs(p.home.x-q.home.x)>=hx+qx+7||Math.abs(p.home.y-q.home.y)>=hy+qy+7,'visual spacing');
+      }
+     });
+     d.querySelector('#replay-seed').click();
+     assert(JSON.stringify(S().state.pieces.map(p=>p.home))===signature,'same seed same layout');
+    }
+    await sleep(10);
+   }
+  }
+  assert(S().audio.musicStarts===initial.musicStarts,'level jumps never restart music');
+  assert(S().audio.musicPosition>initial.musicPosition,'music clock advances across jumps');
+  d.querySelector('#mute').checked=true;d.querySelector('#mute').dispatchEvent(new w.Event('change'));
+  const paused=S().audio.musicPosition;await sleep(250);
+  assert(!S().audio.musicPlaying&&Math.abs(S().audio.musicPosition-paused)<.01,'mute freezes music position');
+  d.querySelector('#test-sound').click();
+  await until(()=>S().audio.musicPlaying,'unmute resume');
+  assert(S().audio.musicPosition>=paused-.1,'resume position retained');
+  const afterResume=S().audio.musicStarts;
+  d.querySelector('#close').click();
+  // Browser lifecycle events exercise the same handlers; real iPad suspension remains manual.
+  w.dispatchEvent(new w.PageTransitionEvent('pagehide'));
+  assert(!S().audio.musicPlaying,'pagehide pauses');
+  w.dispatchEvent(new w.PageTransitionEvent('pageshow'));
+  await until(()=>S().audio.musicPlaying,'pageshow resumes');
+  assert(S().audio.musicStarts===afterResume+1,'one resumed music source');
+  const loopStart=S().audio;
+  out.textContent='PASS 720 seed layouts + same-seed replays, three sizes, Wolf/spacing, fixed tutorial/Solar, continuous music, mute/resume and page lifecycle. Waiting for one real music loop…';
+  await sleep((loopStart.musicDuration-loopStart.musicPosition+1)*1000);
+  const looped=S().audio;
+  assert(looped.musicPlaying&&looped.musicStarts===loopStart.musicStarts,'native loop stays on one source');
+  assert(looped.musicPosition<loopStart.musicDuration-1,'playhead wrapped');
+  out.textContent='PASS all travel checks, including a real complete music loop ('+Math.round((performance.now()-started)/1000)+' seconds). Physical iPad Home Screen check remains manual.';
+ }catch(e){out.textContent='FAIL '+e.stack}
+};
+</script>

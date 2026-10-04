@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>Canonical tangram fit</title>
+<style>body{font:16px system-ui;background:#fffdf8}section{display:grid;grid-template-columns:1fr 1fr}canvas,img{width:100%}h2{margin-bottom:0}</style>
+<h1>Canonical tangram fit</h1><p>Left: loose-source pixels seated on the empty board. Right: supplied solved reference. House framing differs between source boards.</p>
+<div id="proof"></div>
+<script type="module">
+import {TANGRAM_ART,tangramMetrics,drawTangramBoard,drawTangramPiece} from '../tangram.js';
+for(const [theme,art] of Object.entries(TANGRAM_ART)){
+ const load=src=>new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src='../'+src;});
+ const [board,pieces,solved]=await Promise.all([art.boardURL,art.url,art.solvedURL].map(load));
+ const title=document.createElement('h2');title.textContent=theme;proof.append(title);
+ const row=document.createElement('section'),c=document.createElement('canvas');c.width=1000;c.height=700;const g=c.getContext('2d');
+ // Use the same production metrics, scaled and centred for comparison.
+ g.translate(-20,-10);g.scale(1.65,1.65);
+ drawTangramBoard(g,board,theme,1000,700);
+ for(const p of art.pieces){const d={id:p.id,theme},m=tangramMetrics(d,1000,700);drawTangramPiece(g,pieces,d,m.x,m.y,m,0,m.solvedScale);}
+ const ref=document.createElement('canvas');ref.width=1000;ref.height=700;
+ const b=theme==='boat'?[20,104,1408,847]:[208,70,1028,920];
+ const scale=Math.min(940/b[2],670/b[3]);ref.getContext('2d').drawImage(solved,...b,(1000-b[2]*scale)/2,10,b[2]*scale,b[3]*scale);
+ row.append(c,ref);proof.append(row);
+}
+</script>

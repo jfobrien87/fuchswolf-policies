@@ -158,3 +158,5 @@ summary {
 button:focus-visible {
   outline: 3px solid #7a9869;
 }
+
+.activity-buttons{display:flex;flex-wrap:wrap;gap:8px}.activity-buttons button[aria-current="true"]{border:2px solid #849774;background:#e9efdf}#level-picker fieldset{margin:10px 0}#offline-status{overflow-wrap:anywhere}dialog button{min-height:44px}

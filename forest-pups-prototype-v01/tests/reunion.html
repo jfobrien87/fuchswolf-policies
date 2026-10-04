@@ -48,21 +48,25 @@
             }),
           );
         };
-        for (let level = 0; level < 7; level++) {
+        for (let level = 0; level < 12; level++) {
           document.querySelector("#status").textContent =
             "Checking level " + (level + 1);
-          if (level === 6 && location.search.includes("solar")) {
+          if (level === 11 && location.search.includes("solar")) {
             document.querySelector("#status").textContent =
               "Level 5 supplied artwork — ready for manual play";
             return;
           }
-          if (location.search.includes("colour") && level === (location.search.includes("colour2") ? 5 : 4)) {
+          if (
+            location.search.includes("colour") &&
+            level === (location.search.includes("colour2") ? 5 : 4)
+          ) {
             document.querySelector("#status").textContent =
-              `Colour Match ${level-3} — manual review`;
+              `Colour Match ${level - 3} — manual review`;
             return;
           }
           const s = S();
           for (const p of s.state.pieces) {
+          if(S().state.phase!=="puzzle") break;
             pointer("pointerdown", p.x, p.y);
             pointer("pointermove", p.target.x, p.target.y + 16);
             pointer("pointerup", p.target.x, p.target.y + 16);
@@ -71,7 +75,9 @@
           while (S().state.phase !== "portal") await sleep(50);
           f.style.width = "calc(100% - 40px)";
           await sleep(150);
-          if (S().state.portal.x !== S().state.targets[0].x) {
+          if (
+            Math.abs(S().state.portal.x - S().shell.exit.position.x * S().W) > 1
+          ) {
             document.querySelector("#status").textContent =
               "FAIL portal resize";
             return;

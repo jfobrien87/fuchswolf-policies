@@ -102,3 +102,73 @@ Verified the new versioned offline cache contains runtime modules, both supplied
 ## Stronger colour targets — 17 September 2026
 
 Raised the shared colour-destination overlay from 32% to 90% opacity for both colour activities, retaining the inset recessed rim. Visually verified red, blue, yellow and green destinations in the running Colour Match 1 activity. Syntax and service-worker asset paths passed; cache version advanced to polish-4. This rendering-only change does not alter matching or input logic.
+
+## Prototype 02 — 4 October 2026 (current release)
+
+Earlier sections above are historical; this section describes the current shell build. Current parent hold is 1.5 seconds. Wolf is fixed/tappable during puzzles, and exits are independent of puzzle pieces.
+
+Passed the actual-game regression at 1180×820, 900×600 with 20ms artificial stalls every 70ms, and 768×1024: all 27 matches, seven interactive exits, reunion, forgiving pickup, retained-lock release wobble, cancellation, multiple-pointer ownership, wrong/empty release, telemetry export/reset and replay. Desktop median/p95 frame intervals were 8/10ms, 8/16ms with stalls, and 8/10ms. These are not iPad latency measurements.
+
+`tests/shell.html` passed ordered/idempotent completion events, both profiles' independent exit placement, seven passive endings, jump target-ID telemetry and a jump during travel without stale advancement. `tests/controls.html` passed drag isolation, early/cancelled/full holds, seven direct named jumps and 48px utility controls outside the puzzle canvas. Existing sound control logic is preserved; physical output requires listening on the device.
+
+`tests/reunion.html` passed resize before each independent exit drop and during every travel tween, all seven transitions, final reunion and repeated independent pup taps.
+
+Installed the worker under `/travel/forest-pups/`, with cache `forest-pups-p02-v1-%2Ftravel%2Fforest-pups%2F`. Parent/cache checks confirmed the matching active worker, complete runtime cache and zero missing files. Stopped the serving process. `tests/offline-trial.html` then passed an application reload, parent controls, all seven direct jumps, all 27 matches, seven passive exits, final reunion and complete-cache status without its server.
+
+Also navigated directly to the cached subfolder root with the server still stopped. The game displayed correctly; a real browser drag completed Level 1 and exposed the separate doorway while the completed piece stayed visible. A real ghost-Wolf drag entered that doorway and Level 2 appeared, also with the server stopped. Visually checked the holding boundary and doorway clear of puzzle areas. This is stronger than checking cache presence alone, but is still desktop-browser evidence.
+
+Physical iPad Safari/Add-to-Home-Screen cold launch, audible first-touch sound and interruption recovery, native multi-finger/pointer-capture behavior, storage retention, edge gestures and export dialogs remain manual checks. Follow `UPDATE-02.md` before travel. No physical iPad verification is claimed.
+
+## Prototype 03 — 4 October 2026
+
+The supplied canonical shape sheet is byte-identical to the shipped `assets/shapes.png`. All 30 named crops are retained; original shape-level colour mappings and the stronger colour destinations remain. Visually reviewed both new pattern strips, including triangle–square–triangle with all-red candidates. Visual QA caught and corrected an initial Pattern 2 configuration error. A separate startup check caught and fixed parent level selection before artwork finished loading.
+
+Final build checks cover ten activities / 33 placements. The input suite exercises wrong pattern candidates and retained-lock release wobble on both pattern levels, as well as the existing padded pickup, extra-pointer ownership, cancellation, wrong-colour rejection, pure compatible-target switching, Wolf separation/tap behavior, all interactive exits, reunion, telemetry/export and replay. All checks passed at three viewports: 1180×820, 900×600 with 20ms artificial stalls every 70ms, and 768×1024. Final desktop median/p95 intervals were 8/10ms, 8/15ms with artificial stalls, and 8/10ms. Results are reported by `tests/runner.js`; synthetic checks do not measure physical iPad touch latency.
+
+The shell suite passed all ten passive endings and a jump during travel without stale advancement. Controls passed 1.5-second holds, early cancellation, drag isolation, all ten named jumps and 48px targets. The content suite verifies shape-pattern metadata, all 30 canonical sprite names, colour-only validation, debug exclusion, full shuffled-bag coverage and cycle-boundary repeat protection. Eleven actual Lucky Dip activities/exits passed, spanning a reshuffle. Replay preserved the bag/cursor; direct selection exited Lucky Dip.
+
+`forest-pups-p02-v4` reported a controlling matching worker and all 19 runtime cache entries present. Final offline verification passed with the actual local server stopped, using `tests/offline-trial.html` for an app reload, all ten direct jumps, 33 placements and ten automatic exits. `tests/content.html` separately passed eleven Lucky Dip activities with that server stopped. A fresh navigation to the cached app root also rendered Level 1 successfully. No external service is required for these runs.
+
+Physical iPad Safari/Home Screen cold relaunch, audible sound, finger contact and gesture conflicts, export dialogs, long-term storage retention and Cilli's understanding of the pattern task still require device/user observation. A successful automated solution does not establish preschool comprehension. See `UPDATE-03.md` for those checks and the geometric-matching limitation before Tangrams.
+
+## Prototype 04 — 4 October 2026
+
+Both supplied tangram sheets were verified byte-identical to their local source files. Board and piece crops were visually checked. The solved-orientation green-hull ghost was inspected while the held sprite stayed upright. Supplied artwork is not geometrically consistent: this build retains proportional fit gaps rather than redrawing/distorting pieces. This is an art limitation, not a drop-detection failure; see `UPDATE-04.md`.
+
+The full regression passed twelve activities / 43 placements at 1180×820, 900×600 with 20ms synthetic main-thread stalls every 70ms, and 768×1024. It includes prior shape/colour/pattern/Solar interaction, safe Wolf geometry, cancellation, additional pointer ownership, retained-lock wobble, all twelve interactive exits, final reunion, telemetry/export/reset and replay. Observed desktop median/p95 intervals: 8/9ms, 8/16ms with stalls, 8/10ms. These are not physical tablet latency measurements.
+
+An initial smaller-tablet check identified the lowest tangram source's oversized pickup envelope reaching too close to Wolf. Its home moved upward and its extra radius multiplier became 1.05. A subsequent home-scale adjustment kept narrow artwork large enough in the tray instead of shrinking it to the final slot size. The final focused `tests/tangram.html` passed both puzzles at all three viewports, explicitly checking padded acquisition, Wolf separation, wrong-slot rejection/telemetry, empty release, locked pointer cancellation, extra fingers, release wobble, unrotated held pieces, interpolated automatic rotation, exact final angle/scale, placed-piece resize and shared exits.
+
+The shell suite passed all twelve automatic endings, ordered/idempotent completion events and a parent jump during travel without stale advancement. Controls passed early/cancelled/full holds, drag isolation, twelve direct parent jumps and 48px utility targets. Lucky Dip passed eleven actual eligible-level endings across a reshuffle, preserving replay order and excluding the two tangram art-fit trials and debug-only content.
+
+The final version is `forest-pups-p04-v4`. Readiness verified the matching active worker and all 22 runtime cache entries, including both sheets and the tangram module. Worker update verification also covered moving the previous Prototype 03 installation to the new version. Scope cleanup compares the full encoded deployment path, leaving other installations and ambiguous legacy caches alone.
+
+Physical iPad Safari/Home Screen cold launch, native touch delivery/capture, audible sound and interruption recovery, clipboard/download UI, storage retention and Cilli's interpretation of the mismatched recess geometry remain manual checks. No physical-device verification is claimed.
+
+Final offline result: stopped the actual server on port 8094. The app reloaded from cache, all twelve direct parent jumps and all 43 placements/twelve automatic exits reached the reunion. The focused Boat/House suite also passed at all three sizes with the server stopped, including rotation, wobble, resize and interactive exits.
+
+## Prototype 04.1 — canonical assets, 4 October 2026
+
+All six replacement PNGs match their supplied originals byte-for-byte. Visual comparison in tests/canonical-fit.html checked Boat and House assemblies against the solved references, including both hulls and the sloped chimney. The separate House board framing is registered per socket. A final source-edge expansion preserves painted bevels and removes white sheet pixels once during sprite preparation; no image readback happens per frame.
+
+The full regression passed all 43 matches and 12 interactive exits through the reunion at 1180×820, 900×600 and 768×1024. This includes target switching/hysteresis, inaccurate pickup, extra fingers, pointer cancellation, free/wrong drops, repeated touches, release wobble, safe geometry, resize, replay and telemetry. The smaller viewport included simulated 20ms main-thread stalls every 70ms. Desktop frame intervals are not a hardware iPad performance claim.
+
+After the final rendering adjustment, the focused Boat/House suite passed again at all three sizes. It also verifies five unique shuffled slots, a different arrangement on replay, stable arrangement through resize, ID-based socket mapping, pre-oriented held pieces, exact settled transform values and shared interactive exits.
+
+Cache revision forest-pups-p04-v7 verified the expected active worker and all 26 runtime entries on both the existing preview and a fresh test origin. Offline gameplay results are recorded below. Physical iPad Safari gestures, Home Screen storage and acoustic sound level still need the normal on-device smoke test.
+
+Final v7 offline trial: the temporary HTTP server was stopped, the game iframe reloaded from its installed cache, and all twelve direct parent jumps, 43 matches, twelve automatic exits and final reunion passed. Both replacement tangrams completed offline. The current preview server at localhost:8093 remains available. A further pure check passed 1,000 five-slot permutations with no identical consecutive arrangement and valid transforms for every piece at all three canvas sizes.
+
+## Prototype 05 — travel polish, 5 October 2026
+
+The supplied MP3 is byte-identical to its local original. Real browser decoding produced 121.515 seconds of source audio; silence-margin trimming plus the three-second crossfade produced a 115.435-second loop. Both PCM channels contain finite samples. Maximum first/last-sample delta was 0.009505. The travel test observed a full real loop wrap with one unchanged music source, rather than accelerating or simulating the music clock. Perceived musical phrasing/volume still needs listening on the actual iPad.
+
+Passed 720 level/seed/viewport combinations and same-seed replays at 1180×820, 900×600 and 768×1024: unique slots, visible spacing, viewport bounds, Wolf hit-area separation, expected randomization, fixed tutorial/Solar and no unsafe fallback. A pure check additionally passed 3,000 deterministic seeds, fixed-layout overrides and twelve eligible Lucky Dip activities. Music kept its playhead/source across the parent jumps; mute preserved position, unmute resumed, and synthetic pagehide/pageshow exercised the production lifecycle handlers without duplicate sources.
+
+Full input regression passed all 43 matches, twelve exits and reunion at three viewports, including 20ms simulated main-thread stalls on the smaller tablet. Retained target wobble, cancellation, extra pointers, wrong/empty release, geometry, resize, fixed Wolf reactions, replay and telemetry remained intact. Parent-controls tests passed hold timing/cancellation, active-drag isolation, all twelve direct jumps and the reserved 48px utility controls. Lucky Dip passed thirteen actual endings across a twelve-level bag boundary, including both tangrams, with replay order preserved and no immediate repeat.
+
+A fresh installation verified the complete 29-entry cache. With its HTTP server stopped, a fresh game iframe reload completed all twelve activities, all 43 matches and the final reunion. An additional real button gesture decoded and started the cached music and triggered SFX offline. Developer test HTML is intentionally not precached: only the actual game entry point and runtime are offline deliverables.
+
+Final revision is forest-pups-p05-v2 (adds explicit per-level configuration overrides; current layouts unchanged). Physical iPad Safari/Add-to-Home-Screen cold launch, Airplane Mode, speaker loudness and native suspension are not claimed as tested here. Follow UPDATE-05.md's exact on-device checklist before travel.
+
+Final v2 confirmation: expected/active worker versions matched on the existing preview and fresh test origin. With the test server stopped again, all twelve activities and 43 placements completed from a fresh app reload; cached music decoded/played after the audio-check gesture. Lucky Dip also passed thirteen actual offline endings through a full twelve-level bag plus reshuffle, including Boat and House. The preview server on localhost:8093 is left running.

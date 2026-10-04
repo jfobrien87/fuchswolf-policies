@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8"><title>Music seam verification</title><button id="run">Check real music loop seam</button><pre id="result">Ready</pre>
+<script type="module">
+import {prepareLoop,AUDIO_CONFIG} from '../audio.js';
+document.querySelector('#run').onclick=async()=>{
+ try{
+  const ctx=new OfflineAudioContext(2,48000,48000),bytes=await (await fetch('../assets/forest-exploration.mp3')).arrayBuffer();
+  const decoded=await ctx.decodeAudioData(bytes),loop=prepareLoop(ctx,decoded);
+  let seam=0;
+  for(let ch=0;ch<loop.numberOfChannels;ch++){
+   const data=loop.getChannelData(ch);
+   seam=Math.max(seam,Math.abs(data[0]-data[data.length-1]));
+   if(!data.every(Number.isFinite))throw Error('Non-finite audio sample');
+  }
+  if(seam>.02)throw Error('Large boundary discontinuity '+seam);
+  document.querySelector('#result').textContent='PASS supplied track decoded; source '+decoded.duration.toFixed(3)+'s; loop '+loop.duration.toFixed(3)+'s; crossfade '+AUDIO_CONFIG.LOOP_CROSSFADE_SECONDS+'s; maximum seam delta '+seam.toFixed(6)+'; finite PCM in both channels.';
+ }catch(e){document.querySelector('#result').textContent='FAIL '+e.stack}
+}
+</script>

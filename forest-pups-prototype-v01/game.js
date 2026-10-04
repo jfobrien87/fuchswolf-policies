@@ -1,3 +1,15 @@
+import { createAudioManager } from "./audio.js";
+import { chooseSpawn } from "./spawn.js";
+import {
+  TANGRAM_ART,
+  tangramMetrics,
+  drawTangramBoard,
+  drawTangramPiece,
+} from "./tangram.js";
+import { createPlayOrder } from "./play-order.js";
+import { createEvents, createLevelShell, layoutFor } from "./level-shell.js";
+import { drawHolding, drawExit } from "./shell-view.js";
+import { offlineStatus, CACHE_VERSION } from "./offline.js";
 import { SHAPE_SHEET, SHAPE_SPRITES } from "./shape-sprites.js";
 import {
   CONFIG as C,
@@ -44,11 +56,12 @@ function flush() {
 function log(type, data = {}) {
   events.push({
     type,
-    prototype: "01.2",
+    prototype: "04",
     session,
     at: new Date().toISOString(),
     ms: Math.round(now() - sessionStart),
     level: state.level + 1,
+    levelId: LEVEL_DEFINITIONS[state.level].id,
     ...data,
   });
   if (events.length > C.MAX_EVENTS)
@@ -86,6 +99,45 @@ let state = {
   transition: null,
 };
 const assets = {};
+const levelEvents = createEvents();
+const shell = createLevelShell(levelEvents);
+const playOrder = createPlayOrder(LEVEL_DEFINITIONS);
+function currentLayout() {
+  return layoutFor(LEVEL_DEFINITIONS[state.level]);
+}
+levelEvents.on("puzzleProgress", (data) => log("puzzle_progress", data));
+levelEvents.on("puzzleCompleted", () => {
+  state.phase = "celebrate";
+  state.completeAt = now();
+  react("happy", 1500);
+  state.completionSoundPending = true;
+  log("puzzle_completion", {
+    duration: now() - state.levelStart,
+    attempts: Object.fromEntries(state.pieces.map((p) => [p.type, p.attempts])),
+  });
+});
+levelEvents.on("exitActivated", (data) => {
+  state.portal = shell.destination(W, H);
+  lastActivity = now();
+  hintStage = 0;
+  log("exit_activated", data);
+  log("portal_ready", { exitId: data.exitId });
+});
+levelEvents.on("wolfLocomotionUnlocked", (data) => {
+  state.phase = "portal";
+  log("wolf_locomotion_unlocked", data);
+});
+levelEvents.on("endingStarted", (data) => {
+  state.phase = "travel";
+  state.transition = {
+    start: now(),
+    from: { x: state.wolf.x * W, y: state.wolf.y * H },
+    to: { x: state.portal.x, y: state.portal.y },
+  };
+  log("level_ending_started", data);
+  sound("portal");
+});
+levelEvents.on("levelCompleted", (data) => log("level_completed", data));
 function loadImage(name, url) {
   return new Promise((resolve, reject) => {
     const im = new Image();
@@ -207,7 +259,21 @@ function drawShapeSprite(key, x, y, r, alpha = 1) {
   );
   ctx.restore();
 }
-function drawObject(p, x, y, alpha = 1, scale = 1) {
+function drawObject(p, x, y, alpha = 1, scale = 1, solved = false) {
+  if (p.definition.renderer === "tangram") {
+    return drawTangramPiece(
+      ctx,
+      assets[`tangram-${p.definition.theme}`],
+      p.definition,
+      x,
+      y,
+      p.metrics,
+      solved ? p.target.rotation : p.rotation,
+      solved ? p.metrics.solvedScale : p.pixelScale,
+      alpha,
+      scale,
+    );
+  }
   if (p.definition.renderer === "shapeSprite")
     return drawShapeSprite(p.definition.sprite, x, y, p.radius * scale, alpha);
   if (p.definition.renderer === "shape")
@@ -284,11 +350,16 @@ function releaseRadius(p) {
   return R * C.TARGET_RELEASE_RADIUS * p.definition.releaseMultiplier;
 }
 function visiblePieceBounds(p, q) {
+  if (p.metrics)
+    return (
+      Math.abs(p.x - q.x) <= p.metrics.width / 2 &&
+      Math.abs(p.y - q.y) <= p.metrics.height / 2
+    );
   return Math.abs(p.x - q.x) <= p.radius && Math.abs(p.y - q.y) <= p.radius;
 }
 function bottomCompanion() {
   return (
-    LEVEL_DEFINITIONS[state.level]?.companionRegion === "bottom" &&
+    LEVEL_DEFINITIONS[state.level]?.layoutProfile === "bottomCompanion" &&
     state.phase !== "final"
   );
 }
@@ -299,13 +370,15 @@ function logicalDragPoint(q, d = drag) {
       q.x + d.offset.x,
       bottomCompanion()
         ? p.radius + 8
-        : W * C.WOLF_ZONE_RIGHT + hitRadius(p) + 6,
+        : W * currentLayout().puzzleArea.x + hitRadius(p) + 6,
       W - p.radius - 8,
     ),
     y: clamp(
       q.y + d.offset.y - C.FINGER_LIFT,
       p.radius + 8,
-      bottomCompanion() ? (H * 2) / 3 - hitRadius(p) - 6 : H - p.radius - 8,
+      bottomCompanion()
+        ? H * currentLayout().puzzleArea.h - hitRadius(p) - 6
+        : H - p.radius - 8,
     ),
   };
 }
@@ -369,81 +442,17 @@ function react(pose, ms = 900) {
   state.reaction = pose;
   state.reactionUntil = now() + ms;
 }
-let audio = null,
-  muted = false;
-let audioGeneration = 0;
-const sounding = new Set();
-function stopSounds() {
-  audioGeneration++;
-  for (const voice of sounding) {
-    try {
-      voice.stop();
-    } catch {}
-  }
-  sounding.clear();
-}
+const audioManager = createAudioManager({ log, storageKey: KEY + "-audio" });
+let muted = audioManager.status.muted;
+const stopSounds = () => audioManager.stopSfx();
+const unlockAudio = () => audioManager.unlock();
+const sound = (kind) => audioManager.sound(kind);
 function syncSoundUI() {
+  audioManager.setMuted(muted);
   $("sound").classList.toggle("muted", muted);
   $("sound").setAttribute("aria-label", muted ? "Unmute sound" : "Mute sound");
   $("sound").setAttribute("aria-pressed", String(muted));
   $("mute").checked = muted;
-}
-function unlockAudio() {
-  try {
-    audio ||= new (window.AudioContext || window.webkitAudioContext)();
-    if (audio.state !== "running") audio.resume().catch(() => {});
-    if (navigator.audioSession) navigator.audioSession.type = "playback";
-  } catch {}
-}
-function sound(kind) {
-  if (!audio || muted) return;
-  if (audio.state !== "running") {
-    const generation = audioGeneration;
-    audio
-      .resume()
-      .then(() => {
-        if (audio.state === "running" && generation === audioGeneration)
-          playSound(kind);
-      })
-      .catch(() => log("audio_resume_failed"));
-    return;
-  }
-  playSound(kind);
-}
-function playSound(kind) {
-  if (muted) return;
-  const notes = {
-    pickup: [392],
-    match: [523, 659],
-    return: [294],
-    complete: [523, 659, 784],
-    portal: [392, 523, 659],
-    friend: [523, 659, 784, 659],
-  }[kind] || [440];
-  notes.forEach((freq, i) => {
-    const o = audio.createOscillator(),
-      g = audio.createGain(),
-      t = audio.currentTime + i * 0.1;
-    o.type = "sine";
-    o.frequency.setValueAtTime(freq, t);
-    o.frequency.exponentialRampToValueAtTime(freq * 0.94, t + 0.16);
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(
-      kind === "return" ? 0.025 : 0.055,
-      t + 0.015,
-    );
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
-    o.connect(g);
-    g.connect(audio.destination);
-    sounding.add(o);
-    o.onended = () => {
-      sounding.delete(o);
-      o.disconnect();
-      g.disconnect();
-    };
-    o.start(t);
-    o.stop(t + 0.26);
-  });
 }
 function position() {
   state.wolfMove = null;
@@ -454,13 +463,20 @@ function position() {
     p.home = { x: p.layout[0] * W, y: p.layout[1] * H };
     p.target.x = p.layout[2] * W;
     p.target.y = p.layout[3] * H;
+    if (p.definition.renderer === "tangram") {
+      p.metrics = tangramMetrics(p.definition, W, H);
+      p.target.x = p.metrics.x;
+      p.target.y = p.metrics.y;
+      p.radius = Math.max(p.metrics.width, p.metrics.height) / 2;
+      p.rotation = p.done ? p.target.rotation : 0;
+      p.pixelScale = p.done ? p.metrics.solvedScale : p.metrics.homeScale;
+    }
     p.x = p.done ? p.target.x : p.home.x;
     p.y = p.done ? p.target.y : p.home.y;
     p.tween = null;
   }
   if (state.portal) {
-    const target = state.targets.find((t) => t.id === state.portal.id);
-    if (target) Object.assign(state.portal, target);
+    Object.assign(state.portal, shell.destination(W, H));
   }
   if (bottomCompanion()) {
     state.wolf.x = clamp(state.wolf.x, 0.12, 0.88);
@@ -489,14 +505,73 @@ function resize() {
   }
   log("viewport_changed", { width: W, height: H, dpr });
 }
-function startLevel(index) {
+const lastSpawnOrders = new Map();
+// Validate visible bounds against the authored safe zones. Enlarged acquisition
+// areas can overlap; input ownership/visible-piece priority is unchanged.
+function validSpawn(order, slots) {
+  const level = state.definition;
+  const boxes = order.map((slot, i) => {
+    const p = state.pieces[i],
+      m = level.tangram ? tangramMetrics(p.definition, W, H) : null;
+    const r =
+      Math.min(W * level.radiusWidth, H * level.radiusHeight) *
+      p.definition.visualScale;
+    return {
+      x: slots[slot][0] * W,
+      y: slots[slot][1] * H,
+      hx: m ? m.width / 2 : r,
+      hy: m ? m.height / 2 : r,
+    };
+  });
+  const area = currentLayout().puzzleArea,
+    gap = 8;
+  return boxes.every((b, i) => {
+    if (
+      b.x - b.hx < area.x * W + gap ||
+      b.x + b.hx > (area.x + area.w) * W - gap ||
+      b.y - b.hy < gap ||
+      b.y + b.hy > (area.y + area.h) * H - gap
+    )
+      return false;
+    for (let j = 0; j < i; j++) {
+      const other = boxes[j];
+      if (
+        Math.abs(b.x - other.x) < b.hx + other.hx + gap &&
+        Math.abs(b.y - other.y) < b.hy + other.hy + gap
+      )
+        return false;
+    }
+    // Keep loose art clear of all active target art, not just its own socket.
+    return state.pieces.every((p) => {
+      const m = level.tangram ? tangramMetrics(p.definition, W, H) : null;
+      const tx = m ? m.x : p.layout[2] * W,
+        ty = m ? m.y : p.layout[3] * H;
+      const r = Math.min(W * level.radiusWidth, H * level.radiusHeight);
+      const hx = m ? (m.piece.crop[2] * m.solvedScale) / 2 : r,
+        hy = m ? (m.piece.crop[3] * m.solvedScale) / 2 : r;
+      return (
+        Math.abs(b.x - tx) >= b.hx + hx + gap ||
+        Math.abs(b.y - ty) >= b.hy + hy + gap
+      );
+    });
+  });
+}
+function startLevel(index, options = {}) {
+  cancelDrag("level_reset");
+  activePointers.clear();
+  stopSounds();
+  state.fadeInAt = 0;
+  state.completeAt = null;
+  state.completionSoundPending = false;
+  state.fadeAt = null;
+  shell.start(LEVEL_DEFINITIONS[index], options);
   drag = null;
   state.level = index;
   state.phase = "puzzle";
   state.portal = null;
   state.transition = null;
   state.wolfMove = null;
-  state.wolf = bottomCompanion() ? { x: 0.5, y: 5 / 6 } : { x: 0.15, y: 0.6 };
+  state.wolf = { ...currentLayout().wolfHome };
   state.reaction = "idle";
   state.wolfTapAt = null;
   state.levelStart = now();
@@ -505,17 +580,19 @@ function startLevel(index) {
   state.targets = [];
   state.definition = LEVEL_DEFINITIONS[index];
   state.pieces = state.definition.objects.map((definition) => {
-    const target = {
+    const targetId = `L${index + 1}-${definition.destination.id}`;
+    const target = state.targets.find((t) => t.id === targetId) || {
       id: `L${index + 1}-${definition.destination.id}`,
       type: definition.id,
       accepts: definition.destination.accepts,
+      rotation: definition.destination.rotation || 0,
       occupiedBy: null,
       x: 0,
       y: 0,
     };
-    state.targets.push(target);
+    if (!state.targets.includes(target)) state.targets.push(target);
     return {
-      id: target.id,
+      id: `L${index + 1}-piece-${definition.id}`,
       type: definition.id,
       definition,
       layout: [...definition.home, ...definition.destination.position],
@@ -528,10 +605,35 @@ function startLevel(index) {
       tween: null,
     };
   });
+  const spawn = chooseSpawn(state.definition, {
+    seed: options.randomSeed,
+    previous: lastSpawnOrders.get(state.definition.id),
+    valid: validSpawn,
+  });
+  state.randomSeed = spawn.seed;
+  state.trayOrder = spawn.order;
+  state.spawnRandomized = spawn.randomized;
+  lastSpawnOrders.set(state.definition.id, spawn.order);
+  state.pieces.forEach((p, i) => {
+    [p.layout[0], p.layout[1]] = spawn.slots[spawn.order[i]];
+  });
+  log("spawn_layout", {
+    seed: spawn.seed,
+    randomized: spawn.randomized,
+    fallback: !!spawn.fallback,
+    assignments: state.pieces.map((p, i) => ({
+      piece: p.id,
+      slot: spawn.order[i],
+      home: p.layout.slice(0, 2),
+    })),
+  });
   position();
   lastActivity = now();
   hintStage = 0;
-  log("level_start");
+  log("level_start", {
+    playMode: playOrder.snapshot.active ? "luckyDip" : "sequence",
+    playOrder: playOrder.snapshot,
+  });
 }
 function point(e) {
   const b = canvas.getBoundingClientRect();
@@ -550,8 +652,9 @@ function wolfBounds(extended = false) {
     bottom: state.wolf.y * H + (d.h * m) / 2,
   };
   if (extended && state.phase === "puzzle") {
-    if (bottomCompanion()) box.top = Math.max(box.top, (H * 2) / 3);
-    else box.right = Math.min(box.right, W * C.WOLF_ZONE_RIGHT);
+    if (bottomCompanion())
+      box.top = Math.max(box.top, H * currentLayout().wolfZone.y);
+    else box.right = Math.min(box.right, W * currentLayout().wolfZone.w);
   }
   return box;
 }
@@ -574,11 +677,15 @@ function capture(e) {
 }
 // Replace this small reaction hook with a future authored flip animation.
 function onWolfTapped(hitRegion) {
+  levelEvents.emit("wolfReactionRequested", { kind: "wolf_flip", hitRegion });
+}
+levelEvents.on("wolfReactionRequested", ({ hitRegion }) => {
+  if (state.wolfTapAt !== null && now() - state.wolfTapAt < 650) return;
   state.wolfTapAt = now();
   react("happy", 650);
   sound("friend");
-  log("wolf_tapped", { hitRegion });
-}
+  log("wolf_tapped", { hitRegion, reaction: "wolf_flip" });
+});
 function down(e) {
   if (e.pointerType === "mouse" && e.button !== 0) return;
   e.preventDefault();
@@ -675,7 +782,11 @@ function down(e) {
       onWolfTapped(hitRegion);
       return;
     }
-    if (state.phase !== "portal" || !state.definition.interactiveEnding) return;
+    if (
+      state.phase !== "portal" ||
+      shell.state.phase !== "wolfLocomotionUnlocked"
+    )
+      return;
     if (hitRegion === "extended_bounds") log("wolf_pickup_extended_bounds");
     drag = {
       kind: "wolf",
@@ -749,30 +860,42 @@ function updateWolf(q) {
     updateLock(
       q,
       [state.portal],
-      R * C.WOLF_ACQUIRE_RADIUS,
-      R * C.WOLF_RELEASE_RADIUS,
+      state.portal.radius * C.WOLF_ACQUIRE_RADIUS,
+      state.portal.radius * C.WOLF_RELEASE_RADIUS,
     );
   } else {
     const d = wolfDimensions();
     if (bottomCompanion()) {
       drag.ghost = {
         x: clamp(q.x, d.w * 0.7 + 6, W - d.w * 0.7 - 6),
-        y: clamp(q.y, (H * 2) / 3 + d.h * 0.7 + 6, H - d.h * 0.7 - 6),
+        y: clamp(
+          q.y,
+          H * currentLayout().wolfZone.y + d.h * 0.7 + 6,
+          H - d.h * 0.7 - 6,
+        ),
       };
       drag.valid =
-        q.y > (H * 2) / 3 && q.y < H - 12 && q.x > 12 && q.x < W - 12;
+        q.y > H * currentLayout().wolfZone.y &&
+        q.y < H - 12 &&
+        q.x > 12 &&
+        q.x < W - 12;
       return;
     }
     drag.ghost = {
       x: clamp(
         q.x,
         (d.w * C.WOLF_TOUCH_MULTIPLIER) / 2 + 6,
-        W * C.WOLF_ZONE_RIGHT - (d.w * C.WOLF_TOUCH_MULTIPLIER) / 2 - 6,
+        W * currentLayout().wolfZone.w -
+          (d.w * C.WOLF_TOUCH_MULTIPLIER) / 2 -
+          6,
       ),
       y: clamp(q.y, d.h / 2 + 25, H - d.h / 2 - 25),
     };
     drag.valid =
-      q.x < W * C.WOLF_ZONE_RIGHT && q.x > 12 && q.y > 12 && q.y < H - 12;
+      q.x < W * currentLayout().wolfZone.w &&
+      q.x > 12 &&
+      q.y > 12 &&
+      q.y < H - 12;
   }
 }
 function moveOne(e) {
@@ -824,7 +947,18 @@ function move(e) {
   else moveOne(e);
 }
 function tween(p, x, y, duration) {
-  p.tween = { x: p.x, y: p.y, toX: x, toY: y, start: now(), duration };
+  p.tween = {
+    x: p.x,
+    y: p.y,
+    toX: x,
+    toY: y,
+    start: now(),
+    duration,
+    fromRotation: p.rotation || 0,
+    toRotation: p.done ? p.target.rotation : 0,
+    fromScale: p.pixelScale,
+    toScale: p.done ? p.metrics?.solvedScale : p.metrics?.homeScale,
+  };
 }
 function releaseCapture(id) {
   try {
@@ -878,7 +1012,11 @@ function up(e) {
       p.layout[3] = d.lock.y / H;
       tween(p, d.lock.x, d.lock.y, C.TARGET_SNAP_DURATION);
       log("correct_match", { shape: p.type, attempts: p.attempts });
-      log("successful_snap", { shape: p.type, target: d.lock.id });
+      log("successful_snap", {
+        shape: p.type,
+        target: d.lock.id,
+        rotation: d.lock.rotation,
+      });
       if (!state.firstMatch) {
         state.firstMatch = true;
         log("time_to_first_successful_match", {
@@ -887,18 +1025,10 @@ function up(e) {
       }
       react("happy");
       sound("match");
-      if (state.pieces.every((p) => p.done)) {
-        state.phase = "celebrate";
-        state.completeAt = now();
-        react("happy", 1500);
-        sound("complete");
-        log("puzzle_completion", {
-          duration: now() - state.levelStart,
-          attempts: Object.fromEntries(
-            state.pieces.map((p) => [p.type, p.attempts]),
-          ),
-        });
-      }
+      shell.progress(
+        state.targets.filter((target) => target.occupiedBy).length,
+        state.targets.length,
+      );
     } else {
       const wrong = state.targets.find(
         (t) =>
@@ -921,13 +1051,7 @@ function up(e) {
     });
     if (state.phase === "portal" && d.lock) {
       log("portal_interaction");
-      state.phase = "travel";
-      state.transition = {
-        start: now(),
-        from: { x: state.wolf.x * W, y: state.wolf.y * H },
-        to: { x: state.portal.x, y: state.portal.y },
-      };
-      sound("portal");
+      shell.beginEnding();
     } else if (state.phase === "puzzle" && d.valid) {
       state.wolfMove = {
         from: { ...state.wolf },
@@ -1000,32 +1124,15 @@ function ring(x, y, r, color, dash = []) {
   ctx.restore();
 }
 function drawPortal(t) {
-  const p = state.portal;
-  const object = objectFor(p);
-  drawObject(object, p.x, p.y, 0.8);
-  ctx.save();
-  ctx.translate(p.x, p.y);
-  shapePath(
-    ctx,
-    ["circle", "triangle", "square", "star"].includes(object.definition.shape)
-      ? object.definition.shape
-      : "circle",
-    R * 0.9,
-  );
-  const g = ctx.createRadialGradient(0, 0, 3, 0, 0, R);
-  g.addColorStop(0, "#fffdf8");
-  g.addColorStop(0.7, "#eef4d9");
-  g.addColorStop(1, "#92af75");
-  ctx.fillStyle = g;
-  ctx.fill();
-  ctx.strokeStyle = "#a1b984";
-  ctx.lineWidth = 3;
-  ctx.stroke();
-  ctx.restore();
-  ring(p.x, p.y, R * (1.16 + 0.025 * Math.sin(t / 650)), "#b0c88c70");
+  drawExit(ctx, shell.state, state.portal, t);
   if (drag?.kind === "wolf" && drag.lock)
-    wolf(p.x, p.y, { alpha: 0.28, scale: 0.65, pose: "happy" });
+    wolf(state.portal.x, state.portal.y, {
+      alpha: 0.28,
+      scale: 0.65,
+      pose: "happy",
+    });
 }
+
 function draw(t) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = "#fffdf8";
@@ -1037,6 +1144,15 @@ function draw(t) {
   if (dialog.open) {
     t = pausedAt;
   }
+  if (
+    state.completionSoundPending &&
+    !dialog.open &&
+    t - state.completeAt >= C.TARGET_SNAP_DURATION + 30
+  ) {
+    state.completionSoundPending = false;
+    stopSounds();
+    sound("complete");
+  }
   if (state.reactionUntil < t && ["puzzle", "portal"].includes(state.phase))
     state.reaction = "idle";
   if (state.wolfMove) {
@@ -1047,15 +1163,18 @@ function draw(t) {
     state.wolf.y = m.from.y + (m.to.y - m.from.y) * e;
     if (k === 1) state.wolfMove = null;
   }
-  if (state.phase === "celebrate" && t - state.completeAt > 1100) {
-    state.phase = "portal";
-    state.portal = {
-      ...state.targets.find((t) => t.type === state.definition.portalObject),
-    };
-    lastActivity = t;
-    hintStage = 0;
-    log("portal_ready");
+  if (
+    state.phase === "celebrate" &&
+    t - state.completeAt > 1100 &&
+    !dialog.open
+  )
+    shell.activateExit();
+  if (shell.state && state.phase !== "final") {
+    drawHolding(ctx, shell.state, currentLayout(), W, H);
+    if (!shell.state.exit.active)
+      drawExit(ctx, shell.state, shell.destination(W, H), t);
   }
+
   if (state.phase === "final") {
     const bounceStart = state.characterReactions?.wolf || state.finalAt;
     const b =
@@ -1087,7 +1206,34 @@ function draw(t) {
       ctx.stroke();
       ctx.restore();
     }
+    if (state.definition?.tangram)
+      drawTangramBoard(
+        ctx,
+        assets[`tangram-board-${state.definition.tangram}`],
+        state.definition.tangram,
+        W,
+        H,
+      );
+    if (state.definition?.pattern) {
+      const pattern = state.definition.pattern;
+      pattern.cells.forEach((cell, i) => {
+        const [x, y] = pattern.positions[i];
+        if (cell)
+          drawShapeSprite(`shape_${cell[0]}_${cell[1]}`, x * W, y * H, R, 0.83);
+        else {
+          // Neutral empty position does not reveal the answer's colour or shape.
+          ctx.save();
+          ctx.strokeStyle = "#b7aa8a";
+          ctx.lineWidth = 3;
+          ctx.setLineDash([5, 7]);
+          ctx.strokeRect(x * W - R * 1.15, y * H - R * 1.15, R * 2.3, R * 2.3);
+          ctx.restore();
+        }
+      });
+    }
     for (const target of state.targets) {
+      if (["pattern", "tangram"].includes(state.definition.socketStyle))
+        continue;
       if (state.definition.socketStyle === "neutral")
         ring(target.x, target.y, R * 0.72, "#b6b5a180");
       else {
@@ -1103,7 +1249,7 @@ function draw(t) {
             target.x,
             target.y,
             R * 0.88,
-            0.90,
+            0.9,
           );
       }
     }
@@ -1112,7 +1258,7 @@ function draw(t) {
       drag.kind === "piece" &&
       t - drag.lockAt >= C.GHOST_PREVIEW_ACTIVATION_THRESHOLD
     ) {
-      drawObject(drag.piece, drag.lock.x, drag.lock.y, 0.38);
+      drawObject(drag.piece, drag.lock.x, drag.lock.y, 0.38, 1, true);
       ring(drag.lock.x, drag.lock.y, R * 1.18, "#8eab6980");
     }
     for (const p of state.pieces) {
@@ -1122,13 +1268,12 @@ function draw(t) {
           e = 1 - (1 - k) ** 3;
         p.x = m.x + (m.toX - m.x) * e;
         p.y = m.y + (m.toY - m.y) * e;
+        if (p.metrics) {
+          p.rotation = m.fromRotation + (m.toRotation - m.fromRotation) * e;
+          p.pixelScale = m.fromScale + (m.toScale - m.fromScale) * e;
+        }
         if (k === 1) p.tween = null;
       }
-      if (
-        state.portal?.id === p.id &&
-        ["portal", "travel", "fade"].includes(state.phase)
-      )
-        continue;
       let x = p.x,
         y = p.y,
         scale = 1;
@@ -1182,6 +1327,7 @@ function draw(t) {
       if (k === 1 && state.phase === "travel") {
         state.phase = "fade";
         state.fadeAt = t;
+        shell.finish();
         log("level_transition");
       }
     }
@@ -1215,7 +1361,10 @@ function draw(t) {
       ctx.fillStyle = `rgba(255,253,248,${a})`;
       ctx.fillRect(0, 0, W, H);
       if (a === 1) {
-        if (state.level === LEVEL_DEFINITIONS.length - 1) {
+        if (
+          !playOrder.snapshot.active &&
+          state.level === LEVEL_DEFINITIONS.length - 1
+        ) {
           state.phase = "final";
           state.finalAt = t;
           state.characterReactions = {};
@@ -1223,7 +1372,17 @@ function draw(t) {
           state.wolf = { x: 0.38, y: 0.55 };
           log("final_completion");
           sound("friend");
-        } else startLevel(state.level + 1);
+        } else {
+          const next = playOrder.snapshot.active
+            ? playOrder.next()
+            : state.level + 1;
+          if (playOrder.snapshot.active)
+            log("lucky_dip_next", {
+              nextLevelId: LEVEL_DEFINITIONS[next].id,
+              ...playOrder.snapshot,
+            });
+          startLevel(next);
+        }
         state.fadeInAt = t;
       }
     }
@@ -1278,8 +1437,14 @@ function draw(t) {
       box.bottom - box.top,
     );
     ctx.strokeStyle = "#9875a050";
-    if (bottomCompanion()) ctx.strokeRect(0, (H * 2) / 3, W, H / 3);
-    else ctx.strokeRect(0, 0, W * C.WOLF_ZONE_RIGHT, H);
+    if (bottomCompanion())
+      ctx.strokeRect(
+        0,
+        H * currentLayout().wolfZone.y,
+        W,
+        H * currentLayout().wolfZone.h,
+      );
+    else ctx.strokeRect(0, 0, W * currentLayout().wolfZone.w, H);
   }
   for (const target of state.targets) {
     if ($("acquire").checked)
@@ -1305,9 +1470,12 @@ function draw(t) {
 }
 function snapshot() {
   return {
-    prototype: "Forest Pups 01.2",
+    prototype: "Forest Pups 05",
     artStatus: SOLAR_ART_PENDING ? "solar-sheet-pending" : "complete",
     levelDefinitions: LEVEL_DEFINITIONS,
+    shell: shell.state,
+    playOrder: playOrder.snapshot,
+    cacheVersion: CACHE_VERSION,
     exportedAt: new Date().toISOString(),
     configuration: C,
     viewport: { width: W, height: H, dpr },
@@ -1316,13 +1484,22 @@ function snapshot() {
   };
 }
 function updateDebug() {
+  if ($("spawn-status")) {
+    $("spawn-status").textContent =
+      "Current shuffle seed: " + (state.randomSeed ?? "fixed layout");
+    $("random-seed").value = state.randomSeed ?? "";
+  }
+  if ($("play-mode-status"))
+    $("play-mode-status").textContent = playOrder.snapshot.active
+      ? `Lucky Dip · ${playOrder.snapshot.cursor + 1}/${playOrder.snapshot.order.length} · round ${playOrder.snapshot.cycle}`
+      : "Normal level order";
   const current = events.filter((e) => e.session === session),
     counts = current.reduce(
       (a, e) => ((a[e.type] = (a[e.type] || 0) + 1), a),
       {},
     );
   $("status").textContent =
-    `Prototype 01.2${SOLAR_ART_PENDING ? " · Solar System development art (sheet pending)" : ""} · Level ${state.level + 1} · ${state.phase} · ${events.length} saved events · ${storageOK ? "local storage available" : "storage unavailable — export before closing"} · ${navigator.serviceWorker?.controller ? "offline cache active" : "offline cache not yet controlling this page"}`;
+    `Prototype 05${SOLAR_ART_PENDING ? " · Solar System development art (sheet pending)" : ""} · Level ${state.level + 1} · ${state.phase} · ${events.length} saved events · ${storageOK ? "local storage available" : "storage unavailable — export before closing"} · ${navigator.serviceWorker?.controller ? "offline cache active" : "offline cache not yet controlling this page"}`;
   $("metrics").textContent = JSON.stringify(
     {
       matches: counts.correct_match || 0,
@@ -1352,12 +1529,14 @@ function updateDebug() {
   $("raw").value = JSON.stringify(snapshot(), null, 2);
 }
 function openDebug() {
+  if (state.phase === "loading") return;
   cancelDrag("parent_tools");
   pausedAt = now();
   dialog.showModal();
   log("parent_tools_opened");
   flush();
-  $("level-picker").value = String(state.level);
+  updateLevelButtons();
+  refreshOffline();
   updateDebug();
 }
 let hold = null,
@@ -1384,16 +1563,21 @@ const clearHold = () => {
 };
 hotspot.addEventListener("pointermove", (e) => {
   if (
-    holdStart && e.pointerId === holdStart.id &&
+    holdStart &&
+    e.pointerId === holdStart.id &&
     Math.hypot(e.clientX - holdStart.x, e.clientY - holdStart.y) > 10
   )
     clearHold();
 });
 ["pointerup", "pointercancel", "lostpointercapture"].forEach((t) =>
-  hotspot.addEventListener(t, e => {if (e.pointerId === holdStart?.id) clearHold();}),
+  hotspot.addEventListener(t, (e) => {
+    if (e.pointerId === holdStart?.id) clearHold();
+  }),
 );
-window.addEventListener("blur",clearHold);
-document.addEventListener("visibilitychange",()=>{if(document.hidden)clearHold();});
+window.addEventListener("blur", clearHold);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) clearHold();
+});
 function resume() {
   const delta = now() - pausedAt;
   state.levelStart += delta;
@@ -1413,11 +1597,13 @@ $("close").onclick = () => dialog.close();
 dialog.addEventListener("close", resume);
 $("restart").onclick = () => {
   log("restart");
+  playOrder.stop();
   startLevel(0);
   pausedAt = now();
   updateDebug();
 };
 $("reset").onclick = () => {
+  playOrder.stop();
   events = [];
   session = crypto.randomUUID?.() || String(Date.now());
   sessionStart = now();
@@ -1463,7 +1649,7 @@ $("test-sound").onclick = () => {
 $("sound").onclick = () => {
   if (drag || activePointers.size) return;
   clearHold();
-  const needsUnlock = !audio || audio.state !== "running";
+  const needsUnlock = audioManager.status.state !== "running";
   stopSounds();
   muted = needsUnlock ? false : !muted;
   syncSoundUI();
@@ -1475,35 +1661,125 @@ $("mute").onchange = (e) => {
   stopSounds();
   muted = e.target.checked;
   syncSoundUI();
+  if (!muted) unlockAudio();
 };
-const picker = $("level-picker");
-for (const group of ["Shapes", "Colours", "Space"]) {
-  const optgroup = document.createElement("optgroup");
-  optgroup.label = group;
+function updateLevelButtons() {
+  for (const button of document.querySelectorAll("[data-level]"))
+    button.setAttribute(
+      "aria-current",
+      Number(button.dataset.level) === state.level ? "true" : "false",
+    );
+}
+function jumpToLevel(index) {
+  if (state.phase === "loading") return;
+  playOrder.stop();
+  const choice = $("ending-mode").value;
+  const options = choice === "level" ? {} : { endingMode: choice };
+  log("parent_level_jump", {
+    targetLevelId: LEVEL_DEFINITIONS[index].id,
+    destination: index,
+    endingMode: options.endingMode || LEVEL_DEFINITIONS[index].endingMode,
+  });
+  startLevel(index, options);
+  pausedAt = now();
+  updateLevelButtons();
+  updateDebug();
+  refreshOffline();
+}
+for (const group of [...new Set(LEVEL_DEFINITIONS.map((l) => l.group))]) {
+  const field = document.createElement("fieldset"),
+    legend = document.createElement("legend"),
+    buttons = document.createElement("div");
+  legend.textContent = group;
+  buttons.className = "activity-buttons";
   LEVEL_DEFINITIONS.forEach((level, index) => {
     if (level.group === group) {
-      const option = document.createElement("option");
-      option.value = index;
-      option.textContent = level.title;
-      optgroup.append(option);
+      const button = document.createElement("button");
+      button.textContent = level.title;
+      button.dataset.level = index;
+      button.onclick = () => jumpToLevel(index);
+      buttons.append(button);
     }
   });
-  picker.append(optgroup);
+  field.append(legend, buttons);
+  $("level-picker").append(field);
 }
-$("jump-level").onclick = () => {
-  cancelDrag("level_jump");
-  activePointers.clear();
-  log("parent_level_jump", { destination: Number(picker.value) });
-  startLevel(Number(picker.value));
+const modes = document.createElement("fieldset");
+modes.innerHTML =
+  '<legend>Play Modes</legend><button id="lucky-dip">Lucky Dip</button><button id="replay-current">Replay current level</button><button id="replay-seed">Replay same seed</button><label>Debug seed <input id="random-seed" type="number" min="0" max="4294967295" step="1"></label><button id="apply-seed">Play seed</button><p id="spawn-status"></p><label>Music volume <input id="music-volume" type="range" min="0" max="1" step="0.01"></label><label>SFX volume <input id="sfx-volume" type="range" min="0" max="1" step="0.01"></label><p id="play-mode-status"></p>';
+$("level-picker").append(modes);
+$("lucky-dip").onclick = () => {
+  const index = playOrder.start(state.level);
+  log("lucky_dip_start", playOrder.snapshot);
+  startLevel(index);
+  pausedAt = now();
+  updateLevelButtons();
+  updateDebug();
+  refreshOffline();
+};
+$("replay-current").onclick = () => {
+  const mode = shell.state.endingMode;
+  log("level_replay", playOrder.snapshot);
+  startLevel(state.level, { endingMode: mode });
   pausedAt = now();
   updateDebug();
+  refreshOffline();
 };
+function replaySeed(seed) {
+  startLevel(state.level, {
+    endingMode: shell.state.endingMode,
+    randomSeed: seed,
+  });
+  pausedAt = now();
+  updateDebug();
+  refreshOffline();
+}
+$("replay-seed").onclick = () => replaySeed(state.randomSeed);
+$("apply-seed").onclick = () => {
+  const seed = Number($("random-seed").value);
+  if (Number.isInteger(seed) && seed >= 0 && seed <= 4294967295)
+    replaySeed(seed);
+};
+$("music-volume").value = audioManager.status.musicVolume;
+$("sfx-volume").value = audioManager.status.sfxVolume;
+for (const id of ["music-volume", "sfx-volume"])
+  $(id).oninput = () => {
+    audioManager.setVolumes(
+      Number($("music-volume").value),
+      Number($("sfx-volume").value),
+    );
+  };
+let offlineCheck = 0;
+async function refreshOffline() {
+  const request = ++offlineCheck;
+  $("offline-status").textContent = "Checking local cache…";
+  const info = await offlineStatus();
+  if (request !== offlineCheck) return;
+  $("offline-status").textContent =
+    `Service worker registered: ${info.registered ? "yes" : "no"}\nCache version: ${info.version}\nActive worker: ${info.workerVersion || "not controlling this page"}\nOffline ready: ${info.ready ? "yes" : "not yet verified"}\nAudio: ${audioManager.status.state}${muted ? " (muted)" : ""}\nMusic loaded: ${audioManager.status.musicLoaded ? "yes" : "no"} · playing: ${audioManager.status.musicPlaying ? "yes" : "no"}\nMusic / SFX volume: ${audioManager.status.musicVolume} / ${audioManager.status.sfxVolume}\nAudio error: ${audioManager.status.error || "none"}\nShuffle seed: ${state.randomSeed ?? "fixed"}\nLucky Dip: ${playOrder.snapshot.active ? playOrder.snapshot.cursor + 1 + "/" + playOrder.snapshot.order.length + " · cycle " + playOrder.snapshot.cycle : "off"}\nCurrent level: ${state.definition?.id || "loading"}\nLayout: ${state.definition?.layoutProfile || "—"} · Ending: ${shell.state?.endingMode || "—"}\n${info.note}${info.missing.length ? "\nMissing files: " + info.missing.join(", ") : ""}`;
+}
+$("check-offline").onclick = refreshOffline;
+$("offline-status")
+  .closest("details")
+  .addEventListener("toggle", (e) => {
+    if (e.target.open) refreshOffline();
+  });
+const hadController = !!navigator.serviceWorker?.controller;
+navigator.serviceWorker?.addEventListener("controllerchange", () => {
+  // An online refresh upgrades an idle launch automatically. Never interrupt a child.
+  if (hadController && !firstTouch && !drag && !dialog.open) location.reload();
+});
 syncSoundUI();
 log("session_start", { userAgent: navigator.userAgent });
 resize();
 requestAnimationFrame(draw);
 Promise.all([
   loadImage("shapes", SHAPE_SHEET),
+  ...Object.entries(TANGRAM_ART).flatMap(([theme, art]) => [
+    loadImage(`tangram-${theme}`, art.url),
+    loadImage(`tangram-board-${theme}`, art.boardURL),
+    loadImage(`tangram-solved-${theme}`, art.solvedURL),
+  ]),
   loadImage("wolf", "assets/wolf-poses.png"),
   loadImage("fox", "assets/fox.png"),
   ...(SOLAR_SHEET ? [loadImage("solarSystem", SOLAR_SHEET)] : []),
@@ -1515,13 +1791,16 @@ Promise.all([
   });
 if ("serviceWorker" in navigator && location.protocol !== "file:")
   navigator.serviceWorker
-    .register("./sw.js")
+    .register("./sw.js", { updateViaCache: "none" })
+    .then((registration) => registration.update())
     .catch(() => log("offline_cache_unavailable"));
 // Read-only inspection for automated regression tests and adult diagnostics.
 window.ForestPups = {
   snapshot: () =>
     structuredClone({
       state,
+      shell: shell.state,
+      playOrder: playOrder.snapshot,
       drag,
       config: C,
       events,
@@ -1530,8 +1809,9 @@ window.ForestPups = {
       R,
       hitRadii: state.pieces.map((p) => hitRadius(p)),
       wolfBounds: wolfBounds(true),
-      audioState: audio?.state || "not-started",
-      activeSounds: sounding.size,
+      audioState: audioManager.status.state,
+      activeSounds: audioManager.status.activeSounds,
+      audio: audioManager.status,
       muted,
     }),
   openDebug,

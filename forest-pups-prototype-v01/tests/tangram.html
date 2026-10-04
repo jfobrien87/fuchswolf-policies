@@ -1,0 +1,207 @@
+<!doctype html><meta charset="utf-8" /><title>Tangram checks</title
+><button id="run">Test tangrams</button><button id="boat">Boat preview</button
+><button id="house">House preview</button
+><button id="ghost">Ghost preview</button>
+<pre id="result">Ready</pre>
+<iframe
+  src="../index.html?test=1"
+  style="width: 1180px; height: 820px; border: 0"
+></iframe>
+<script type="module">
+  const f = document.querySelector("iframe"),
+    out = document.querySelector("#result"),
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const assert = (v, m) => {
+    if (!v) throw Error(m);
+  };
+  async function until(fn, m) {
+    const start = performance.now();
+    while (!fn()) {
+      if (performance.now() - start > 7000) throw Error("Timeout " + m);
+      await sleep(30);
+    }
+  }
+  const S = () => f.contentWindow.ForestPups.snapshot();
+  async function jump(i) {
+    await until(() => S().state.phase !== "loading", "load");
+    const w = f.contentWindow;
+    w.ForestPups.openDebug();
+    w.document.querySelector(`[data-level="${i}"]`).click();
+    w.document.querySelector("#close").click();
+  }
+  document.querySelector("#boat").onclick = () => jump(9);
+  document.querySelector("#house").onclick = () => jump(10);
+  document.querySelector("#ghost").onclick = async () => {
+    await jump(9);
+    const w = f.contentWindow,
+      c = w.document.querySelector("canvas"),
+      p = S().state.pieces[3],
+      b = c.getBoundingClientRect();
+    for (const [type, x, y] of [
+      ["pointerdown", p.x, p.y],
+      ["pointermove", p.target.x, p.target.y + 16],
+    ])
+      c.dispatchEvent(
+        new w.PointerEvent(type, {
+          pointerId: 1,
+          pointerType: "touch",
+          clientX: x + b.left,
+          clientY: y + b.top,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    out.textContent =
+      "Ghost and held piece share canonical pre-oriented geometry";
+  };
+  document.querySelector("#run").onclick = async () => {
+    try {
+      const w = f.contentWindow,
+        c = w.document.querySelector("canvas");
+      const pointer = (type, x, y, id = 1) => {
+        const b = c.getBoundingClientRect();
+        c.dispatchEvent(
+          new w.PointerEvent(type, {
+            pointerId: id,
+            pointerType: "touch",
+            clientX: x + b.left,
+            clientY: y + b.top,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      };
+      for (const [width, height] of [
+        [1180, 820],
+        [900, 600],
+        [768, 1024],
+      ]) {
+        for (const index of [9, 10]) {
+          f.style.width = width + "px";
+          f.style.height = height + "px";
+          await sleep(100);
+          await jump(index);
+          let s = S();
+          assert(s.state.pieces.length === 5, "five pieces");
+          const oldOrder = JSON.stringify(s.state.trayOrder);
+          await jump(index);
+          s = S();
+          assert(
+            JSON.stringify(s.state.trayOrder) !== oldOrder,
+            "fresh tray arrangement",
+          );
+          assert(
+            new Set(s.state.trayOrder).size === 5,
+            "unique safe tray slots",
+          );
+          const stable = JSON.stringify(s.state.trayOrder);
+          w.dispatchEvent(new w.Event("resize"));
+          await sleep(60);
+          assert(
+            JSON.stringify(S().state.trayOrder) === stable,
+            "resize preserves tray order",
+          );
+          assert(
+            s.state.pieces.every(
+              (p, i) => p.home.y + s.hitRadii[i] < s.wolfBounds.top,
+            ),
+            "Wolf touch separation",
+          );
+          const p = s.state.pieces[0],
+            wrong = s.state.targets[1];
+          pointer("pointerdown", p.x, p.y);
+          pointer("pointermove", wrong.x, wrong.y + 16);
+          assert(!S().drag.lock, "wrong slot cannot acquire");
+          pointer("pointerup", wrong.x, wrong.y + 16);
+          await sleep(360);
+          assert(
+            S().events.some((e) => e.type === "incorrect_target_attempt"),
+            "wrong-slot telemetry",
+          );
+          pointer("pointerdown", p.x, p.y);
+          pointer("pointermove", s.W * 0.97, s.H * 0.1);
+          pointer("pointerup", s.W * 0.97, s.H * 0.1);
+          await sleep(360);
+          assert(!S().state.pieces[0].done, "empty release returns");
+          pointer("pointerdown", p.x, p.y);
+          pointer("pointermove", p.target.x, p.target.y + 16);
+          assert(S().drag.lock, "acquired");
+          pointer("pointercancel", p.target.x, p.target.y);
+          await sleep(360);
+          assert(!S().state.pieces[0].done, "cancel returns");
+          for (const piece of S().state.pieces) {
+            pointer("pointerdown", piece.x + piece.radius * 0.5, piece.y);
+            assert(S().drag?.piece.id === piece.id, "expanded acquisition");
+            pointer("pointerdown", piece.x, piece.y, 2);
+            pointer("pointerup", piece.x, piece.y, 2);
+            assert(S().drag.id === 1, "extra pointer cannot steal");
+            pointer(
+              "pointermove",
+              piece.target.x + piece.radius * 0.5,
+              piece.target.y + 16,
+            );
+            assert(S().drag.lock, "correct target");
+            assert(S().drag.piece.rotation === 0, "held sprite unrotated");
+            pointer(
+              "pointermove",
+              piece.target.x - s.R * 2.8 + piece.radius * 0.5,
+              piece.target.y + 16,
+            );
+            assert(S().drag.lock, "retained tangram wobble");
+            pointer(
+              "pointerup",
+              piece.target.x - s.R * 2.9,
+              piece.target.y + 20,
+            );
+            let placed = S().state.pieces.find((p) => p.id === piece.id);
+            assert(placed.done, "locked release success");
+            assert(
+              placed.tween.toRotation === piece.target.rotation,
+              "solved rotation tween",
+            );
+            await sleep(110);
+            placed = S().state.pieces.find((p) => p.id === piece.id);
+            if (piece.target.rotation)
+              assert(
+                placed.rotation > 0 && placed.rotation < piece.target.rotation,
+                "rotation interpolates",
+              );
+            await sleep(160);
+            placed = S().state.pieces.find((p) => p.id === piece.id);
+            assert(
+              Math.abs(placed.rotation - piece.target.rotation) < 0.001,
+              "final rotation",
+            );
+            assert(
+              Math.abs(placed.pixelScale - placed.metrics.solvedScale) < 0.001,
+              "scale settles",
+            );
+          }
+          await until(() => S().state.phase === "portal", "exit");
+          s = S();
+          assert(S().shell.progress.placed === 5, "five filled slots");
+          f.style.width = "1100px";
+          await sleep(100);
+          assert(
+            S().state.pieces.every((p) => Math.abs(p.x - p.target.x) < 1),
+            "placed resize",
+          );
+          s = S();
+          pointer("pointerdown", s.state.wolf.x * s.W, s.state.wolf.y * s.H);
+          pointer("pointermove", s.state.portal.x, s.state.portal.y);
+          pointer("pointerup", s.state.portal.x, s.state.portal.y);
+          await until(
+            () => S().state.level === index + 1 && S().state.phase === "puzzle",
+            "next level",
+          );
+          f.style.width = "1180px";
+          await sleep(100);
+        }
+      }
+      out.textContent =
+        "PASS Boat + House at three viewports: five pieces, padded pickup, extra finger, cancellation, empty release, retained wobble, pre-oriented drag, solved scale, shuffled replay, stable tray resize, shared exits";
+    } catch (e) {
+      out.textContent = "FAIL " + e.stack;
+    }
+  };
+</script>

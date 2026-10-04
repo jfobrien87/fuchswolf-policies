@@ -1,0 +1,95 @@
+<!doctype html><meta charset="utf-8" /><title>Offline travel trial</title
+><button id="run">Run after stopping server</button>
+<button id="audio-check">Check offline music and SFX</button><pre id="audio-result">Audio not checked</pre>
+<pre id="result">Load this page online, then stop its server and run.</pre>
+<iframe
+  src="../index.html?test=1"
+  style="width: 1180px; height: 820px; border: 0"
+></iframe>
+<script>
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+    f = document.querySelector("iframe"),
+    out = document.querySelector("#result");
+  const assert = (v, m) => {
+    if (!v) throw Error(m);
+  };
+  async function until(fn, m) {
+    const t = performance.now();
+    while (!fn()) {
+      if (performance.now() - t > 6500) throw Error("Timeout " + m);
+      await sleep(40);
+    }
+  }
+  document.querySelector("#audio-check").onclick = async () => {
+    const audioOut=document.querySelector("#audio-result");
+    try {
+      const w=f.contentWindow;
+      w.ForestPups.openDebug();
+      w.document.querySelector("#test-sound").click();
+      await until(()=>w.ForestPups.snapshot().audio.musicPlaying,"cached music playback");
+      const a=w.ForestPups.snapshot().audio;
+      assert(a.musicLoaded && a.state==="running","offline audio decoded/running");
+      audioOut.textContent="PASS cached music decoded and playing after a fresh gesture; SFX cue triggered. Listen on the actual iPad.";
+    }catch(e){audioOut.textContent="FAIL "+e.stack;}
+  };
+  document.querySelector("#run").onclick = async () => {
+    try {
+      await new Promise((resolve) => {
+        f.onload = resolve;
+        f.contentWindow.location.reload();
+      });
+      const w = f.contentWindow;
+      await until(
+        () => w.ForestPups?.snapshot().state.phase === "puzzle",
+        "offline reload",
+      );
+      const d = w.document,
+        c = d.querySelector("canvas"),
+        S = () => w.ForestPups.snapshot();
+      const pointer = (type, x, y) => {
+        const r = c.getBoundingClientRect();
+        c.dispatchEvent(
+          new w.PointerEvent(type, {
+            pointerId: 1,
+            pointerType: "touch",
+            clientX: x + r.left,
+            clientY: y + r.top,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      };
+      for (let i = 0; i < 12; i++) {
+        w.ForestPups.openDebug();
+        d.querySelector("#ending-mode").value = "passive";
+        d.querySelector(`[data-level="${i}"]`).click();
+        d.querySelector("#close").click();
+        assert(S().state.level === i, "offline direct jump");
+        for (const p of S().state.pieces) {
+          if(S().state.phase!=="puzzle") break;
+          pointer("pointerdown", p.x, p.y);
+          pointer("pointermove", p.target.x, p.target.y + 16);
+          pointer("pointerup", p.target.x, p.target.y + 16);
+        }
+        await until(
+          () =>
+            i === 11 ? S().state.phase === "final" : S().state.level === i + 1,
+          "offline completion",
+        );
+        out.textContent = `PASS offline reload and activity ${i + 1}/12`;
+      }
+      w.ForestPups.openDebug();
+      await until(
+        () =>
+          d
+            .querySelector("#offline-status")
+            .textContent.includes("Offline ready: yes"),
+        "readiness",
+      );
+      out.textContent =
+        "PASS offline root reload, parent controls, twelve direct jumps, all 43 matches and twelve automatic exits, final reunion and complete-cache status";
+    } catch (e) {
+      out.textContent = "FAIL " + e.stack;
+    }
+  };
+</script>
